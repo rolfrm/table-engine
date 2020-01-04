@@ -24,12 +24,16 @@ void test_string_intern(){
 void test_graphics(){
 
   u64 win = control_new_named("test_window");
+  u64 win2 = control_new_named("test_window2");
+ 
   f64 w, h;
   if(control_try_get_size(win, &w, &h)){
     printf("%i %f %f\n", win, w, h);
   }
-  control_set_size(win, 512, 512);
+  //control_set_size(win, 512, 512);
   show_window(win);
+  show_window(win2);
+  
   while(graphics_process_active_window_count()){
     iron_usleep(10000);
     graphics_process();

@@ -26,7 +26,7 @@ bool control_try_get_size(u64 control, double * width, double * height){
   if(control == 0) return false;
   if(false == control_size_try_get(control_size_table, &control, width, height))
     return control_try_get_size(get_class(control), width, height);
-  return false;
+  return true;
 }
 
 u64_table * class;
@@ -64,21 +64,75 @@ void init_module(){
   //initialized_fonts();
 }
 
+vec2 window_size;
+
 void render_control(u64 control){
-  render_text("Hello world!", 12, vec2_new(512,512), vec2_new(0, 0));
+  UNUSED(control);
+  render_text("Hello world!", 12, window_size, vec2_new(0, 0));
 }
 
+void process_events(){
+  gl_window_event evts[10];
+  size_t evt_count = gl_get_events(evts, array_count(evts));
+  for(size_t i = 0; i < evt_count; i++){
+    var evt = evts[i];
+    var type = evt.type;
+    u64 key = 0;
+    gl_window * win2 = NULL;
+    
+    for(u32 j = 0; j < window_pointers->count; j++){
+      win2 = (gl_window *) window_pointers->value[j + 1];	  
+      if(win2 == evt.win){
+	key = window_pointers->key[j + 1];
+	break;
+      }
+    }
+    if(key == 0) continue;
+    if(type == EVT_WINDOW_CLOSE){
+      printf("Window closed!\n");
+      u64_table_unset(window_pointers, key);
+      unshow_window(key);
+      //gl_window_destroy(&win2);
+    }else if(type == EVT_WINDOW_RESIZE){
+      int w = evt.window_size_change.width;
+      int h = evt.window_size_change.height;
+      control_set_size(key, w, h);
+    }
+  }
+
+}
 
 void render_window(u64 winid){
   gl_window * win;
   if(!u64_table_try_get(window_pointers, &winid, (u64 *) &win)){
     win = gl_window_open(512, 512);
+    process_events();
     u64_table_set(window_pointers, winid, (u64) win);   
   }
-  //printf("Window: %i\n", winid);
+  int w,h;
+  gl_window_get_size(win, &w, &h);
   gl_window_make_current(win);
+  double w2 = 0,h2 = 0;
+  if(control_try_get_size(winid, &w2, &h2)){
+    if(w2 <= 0 || h2 <= 0){
+      w2 = 512;
+      h2 = 512;
+      control_set_size(winid, w2, h2);
+    }
+    int w2i = (int)w2;
+    int h2i = (int)h2;
+    if(w2i != w || h != h2i){
+      gl_window_set_size(win, w2i, h2i);
+    }
+    w = w2i;
+    h = h2i;
+    glViewport(0,0,w,h);
+  }
+
+  window_size = vec2_new(w, h);
+  
   glClear(GL_COLOR_BUFFER_BIT);
-  render_control(win);
+  render_control(winid);
   gl_window_swap(win);
 }
 
@@ -90,34 +144,8 @@ void graphics_process(){
   for(u32 i = 0; i <windows->count; i++){
     render_window(windows->key[i + 1]);
   }
-  
-  gl_window_event evt[10];
-  size_t evt_count = gl_get_events(evt, array_count(evt));
-  for(size_t i = 0; i < evt_count; i++){
-    if(evt[i].type == EVT_WINDOW_CLOSE){
-      printf("Window closed!\n");
-      for(u32 i = 0; i < window_pointers->count; i++){
-	gl_window * win2 = (gl_window *) window_pointers->value[i + 1];
-	if(win2 == evt[i].win){
-	  u64 key = window_pointers->key[i + 1];
-	  
-	  u64_table_unset(window_pointers, key);
-	  unshow_window(key);
-	  gl_window_destroy(&win2);
-	  break;
-	}
-      }
-      
-    }
-  }
-  
-  /*
-  for(u32 i = 0; i < window_pointers; i++){
-    if(!u64_table_try_get(windows, window_pointers->key[i], NULL)){
-      
-    }
-    }*/
-  
+  process_events();
+    
   gl_window_poll_events();
 }
 

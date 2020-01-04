@@ -4,6 +4,7 @@
 *.obj
 *.elf
 
+
 # Precompiled Headers
 *.gch
 *.pch
@@ -31,3 +32,5 @@
 *~
 *.depends
 \#*\#
+
+*.shader.c

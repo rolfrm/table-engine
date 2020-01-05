@@ -21,16 +21,35 @@ void test_string_intern(){
  
 }
 
+void render_test_window(u64 id){
+  const char * l = "Hello world from win 1";
+  render_text(l, strlen(l), window_size, vec2_new(0, 0));
+  
+  render_text(l, strlen(l), window_size, vec2_new(0, 20));
+  
+  render_text(l, strlen(l), window_size, vec2_new(0, 40));
+  
+  render_text(l, strlen(l), window_size, vec2_new(0, 60));
+}
+
+void render_test_window2(u64 id){
+  const char * l = "Hello world from win 2";
+  render_text(l, strlen(l), window_size, vec2_new(0, 0));
+}
+
+
+
 void test_graphics(){
 
   u64 win = control_new_named("test_window");
   u64 win2 = control_new_named("test_window2");
- 
-  f64 w, h;
-  if(control_try_get_size(win, &w, &h)){
-    printf("%i %f %f\n", win, w, h);
-  }
-  //control_set_size(win, 512, 512);
+  set_class(win, window_class);
+  u64 console = control_new_named("test_window console");
+  control_add_sub(win, console);
+  set_class(console, console_class);
+  class_set_method(win, render_control_method, NULL);
+  class_set_method(win2, render_control_method, render_test_window2);
+  
   show_window(win);
   show_window(win2);
   

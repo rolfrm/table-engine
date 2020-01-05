@@ -29,6 +29,17 @@ bool control_try_get_size(u64 control, double * width, double * height){
   return true;
 }
 
+control_size * window_position_table;
+
+void control_set_position(u64 control, f64 x, f64 y){
+  control_size_set(window_position_table, control, x, y);
+}
+
+bool control_get_position(u64 control, f64 *x, f64 * y){
+  return control_size_try_get(window_position_table, &control, x, y);
+}
+
+
 u64_table * class;
 
 void set_class(u64 object, u64 base){
@@ -42,6 +53,47 @@ u64 get_class(u64 object){
   return 0;
 }
 
+u64_table * class_methods;
+
+void class_set_method(u64 class, u64 method, void * methodf){
+  u64 agg = intern_aggregate(class, method);
+  if(methodf == NULL)
+    u64_table_unset(class_methods, agg);
+  else
+    u64_table_set(class_methods, agg, (u64) methodf);
+}
+
+void * class_get_method(u64 object, u64 method){
+  while(object != 0)
+    {
+      u64 agg = intern_aggregate(object, method);
+      u64 methodf;
+      if(u64_table_try_get(class_methods, &agg, &methodf))
+	return (void *)methodf;
+      object = get_class(object);
+    }
+  return NULL;
+}
+
+u64_table * sub_controls;
+
+void control_add_sub(u64 object, u64 subobject){
+  u64_table_set(sub_controls, object, subobject);
+}
+
+void control_get_subs(u64 object, u64 * array, u64 count, u64 * index){
+  u64 indexes[10];
+  u64 cnt = 0;
+  while(0 < (cnt = u64_table_iter(sub_controls, &object, 1, NULL, indexes, MIN(count, 10), index))){
+    for(u64 i = 0; i < cnt; i++){
+      array[i] = sub_controls->value[indexes[i]];
+    }
+    array += cnt;
+    count -= cnt;
+  }
+}
+
+
 u64_table * windows;
 
 void show_window(u64 windowid){
@@ -53,22 +105,44 @@ void unshow_window(u64 windowid){
 }
 
 u64_table * window_pointers;
+u64 render_control_method;
+u64 control_class;
+u64 window_class;
+
+void control_render(u64 control){
+  const char * l = "control";
+  render_text(l, strlen(l), window_size, vec2_new(0, 0));
+  
+}
 
 void init_module(){
   printf("Initialized graphics\n");
   control_size_table = control_size_create("control size");
+  window_position_table = control_size_create("control position");
   class = u64_table_create("control class");
-  control_window = intern_string("control window");
+  sub_controls = u64_table_create("control subs");
+  ((bool *)&sub_controls->is_multi_table)[0] = true;
+  
   windows = u64_table_create("control_window");
   window_pointers = u64_table_create(NULL);
-  //initialized_fonts();
+  class_methods = u64_table_create(NULL);
+
+  render_control_method = intern_string("render control method");
+  
+  control_class = intern_string("control class");
+  window_class = intern_string("window class");
+  set_class(window_class, control_class);
+  class_set_method(control_class, render_control_method, control_render);
+
+  console_init();
 }
 
 vec2 window_size;
 
 void render_control(u64 control){
-  UNUSED(control);
-  render_text("Hello world!", 12, window_size, vec2_new(0, 0));
+  void ( * render)(u64 control) = class_get_method(control, render_control_method);
+  if(render != NULL)
+    render(control);
 }
 
 void process_events(){
@@ -92,14 +166,13 @@ void process_events(){
       printf("Window closed!\n");
       u64_table_unset(window_pointers, key);
       unshow_window(key);
-      //gl_window_destroy(&win2);
+      gl_window_destroy(&win2);
     }else if(type == EVT_WINDOW_RESIZE){
       int w = evt.window_size_change.width;
       int h = evt.window_size_change.height;
       control_set_size(key, w, h);
     }
   }
-
 }
 
 void render_window(u64 winid){

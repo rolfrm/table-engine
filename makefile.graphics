@@ -1,5 +1,5 @@
 OPT = -g3 -O0
-LIB_SOURCES1 = graphics_module.c utf8.c text_rendering.c
+LIB_SOURCES1 = graphics_module.c utf8.c text_rendering.c console.c
 
 LIB_SOURCES = $(addprefix src/, $(LIB_SOURCES1))
 CC = gcc

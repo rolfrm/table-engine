@@ -1,4 +1,5 @@
 #include <iron/full.h>
+#include <iron/gl.h>
 #include <icydb.h>
 #include "string_intern.h"
 #include "graphics_module.h"
@@ -33,9 +34,14 @@ void render_test_window(u64 id){
 }
 
 void render_test_window2(u64 id){
+  blit_begin(BLIT_MODE_UNIT);
+  blit_rectangle(-1,-1,2,2,1,0,0,0.1);
+  //blit_end();
   const char * l = "Hello world from win 2";
   render_text(l, strlen(l), window_size, vec2_new(0, 0));
 }
+
+
 
 
 
@@ -44,8 +50,11 @@ void test_graphics(){
   u64 win = control_new_named("test_window");
   u64 win2 = control_new_named("test_window2");
   set_class(win, window_class);
+  
   u64 console = control_new_named("test_window console");
-  control_add_sub(win, console);
+  printf("win/console: %i %i\n", win, console);
+  if(get_class(console) == 0)
+    control_add_sub(win, console);
   set_class(console, console_class);
   class_set_method(win, render_control_method, NULL);
   class_set_method(win2, render_control_method, render_test_window2);

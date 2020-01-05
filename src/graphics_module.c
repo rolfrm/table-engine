@@ -81,17 +81,21 @@ void control_add_sub(u64 object, u64 subobject){
   u64_table_set(sub_controls, object, subobject);
 }
 
-void control_get_subs(u64 object, u64 * array, u64 count, u64 * index){
+u64 control_get_subs(u64 object, u64 * array, u64 count, u64 * index){
   u64 indexes[10];
   u64 cnt = 0;
+  u64 tcnt = 0;
   while(0 < (cnt = u64_table_iter(sub_controls, &object, 1, NULL, indexes, MIN(count, 10), index))){
-    for(u64 i = 0; i < cnt; i++){
+    for(u64 i = 0; i < cnt; i++)
       array[i] = sub_controls->value[indexes[i]];
-    }
+  
     array += cnt;
     count -= cnt;
+    tcnt += cnt;
   }
+  return tcnt;
 }
+
 
 
 u64_table * windows;
@@ -110,9 +114,13 @@ u64 control_class;
 u64 window_class;
 
 void control_render(u64 control){
-  const char * l = "control";
-  render_text(l, strlen(l), window_size, vec2_new(0, 0));
-  
+  u64 idx = 0;
+  u64 subs[10];
+  u64 cnt = 0;
+  while((cnt = control_get_subs(control, subs, array_count(subs), &idx))){
+    for(u64 i = 0; i < cnt; i++)
+      render_control(subs[i]);
+  }
 }
 
 void init_module(){

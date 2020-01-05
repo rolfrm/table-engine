@@ -25,7 +25,8 @@ void render_text(const char * text, size_t len, vec2 window_size, vec2 shared_of
 void initialized_fonts();
 
 void control_add_sub(u64 object, u64 subobject);
-
+u64 control_get_subs(u64 object, u64 * array, u64 count, u64 * index);
+void render_control(u64 control);
 void control_set_position(u64 control, f64 x, f64 y);
 bool control_get_position(u64 control, f64 *x, f64 * y);
 

@@ -41,24 +41,28 @@ void render_test_window2(u64 id){
   render_text(l, strlen(l), window_size, vec2_new(0, 0));
 }
 
-
-
-
-
 void test_graphics(){
 
   u64 win = control_new_named("test_window");
   u64 win2 = control_new_named("test_window2");
   set_class(win, window_class);
-  
+
+  u64 decorator = control_new_named("test_window console decorator");
+  set_class(decorator, control_class);
   u64 console = control_new_named("test_window console");
   printf("win/console: %i %i\n", win, console);
-  if(get_class(console) == 0)
-    control_add_sub(win, console);
+  if(get_class(console) == 0){
+    control_add_sub(win, decorator);
+    control_add_sub(decorator, console);
+  }
+  control_set_position(decorator, 10, 100);
   set_class(console, console_class);
   class_set_method(win, render_control_method, NULL);
   class_set_method(win2, render_control_method, render_test_window2);
-  
+
+  control_set_focus(win, console);
+ 
+
   show_window(win);
   show_window(win2);
   

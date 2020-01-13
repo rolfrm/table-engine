@@ -55,6 +55,7 @@ u64 get_class(u64 object){
 
 u64_table * class_methods;
 
+
 void class_set_method(u64 class, u64 method, void * methodf){
   u64 agg = intern_aggregate(class, method);
   if(methodf == NULL)
@@ -108,19 +109,40 @@ void unshow_window(u64 windowid){
   u64_table_unset(windows, windowid);
 }
 
+
+
+
 u64_table * window_pointers;
 u64 render_control_method;
+u64 key_event_method;
 u64 control_class;
 u64 window_class;
-
-void control_render(u64 control){
+vec2 current_control_offset;
+static void control_render(u64 control){
   u64 idx = 0;
   u64 subs[10];
   u64 cnt = 0;
+  f64 x, y;
+  bool pos = control_get_position(control, &x, &y);
+  vec2 ppos;
+  if(pos){
+    ppos = current_control_offset;
+    current_control_offset.x += x;
+    current_control_offset.y += y;
+  }
   while((cnt = control_get_subs(control, subs, array_count(subs), &idx))){
     for(u64 i = 0; i < cnt; i++)
       render_control(subs[i]);
   }
+  if(pos){
+    current_control_offset = ppos;
+  }
+}
+
+u64_table * focused_controls;
+
+void control_set_focus(u64 window, u64 control){
+  u64_table_set(focused_controls, window, control);
 }
 
 void init_module(){
@@ -129,20 +151,25 @@ void init_module(){
   window_position_table = control_size_create("control position");
   class = u64_table_create("control class");
   sub_controls = u64_table_create("control subs");
+  
   ((bool *)&sub_controls->is_multi_table)[0] = true;
   
   windows = u64_table_create("control_window");
   window_pointers = u64_table_create(NULL);
   class_methods = u64_table_create(NULL);
 
+  focused_controls = u64_table_create("focus");
+
   render_control_method = intern_string("render control method");
-  
+  key_event_method = intern_string("key event method");  
   control_class = intern_string("control class");
   window_class = intern_string("window class");
+  
   set_class(window_class, control_class);
   class_set_method(control_class, render_control_method, control_render);
 
   console_init();
+  textbox_init();
 }
 
 vec2 window_size;
@@ -152,6 +179,7 @@ void render_control(u64 control){
   if(render != NULL)
     render(control);
 }
+
 
 void process_events(){
   gl_window_event evts[10];
@@ -179,6 +207,14 @@ void process_events(){
       int w = evt.window_size_change.width;
       int h = evt.window_size_change.height;
       control_set_size(key, w, h);
+    }else{
+      u64 out_ctrl = 0;
+      if(u64_table_try_get(focused_controls, &key, &out_ctrl)){
+	void (* f)(u64 control, gl_window_event evt) = class_get_method(out_ctrl, key_event_method);
+	if(f != NULL){
+	  f(out_ctrl, evt);
+	}
+      }	 
     }
   }
 }
@@ -211,8 +247,9 @@ void render_window(u64 winid){
   }
 
   window_size = vec2_new(w, h);
-  
+  current_control_offset = vec2_zero;
   glClear(GL_COLOR_BUFFER_BIT);
+  glEnable(GL_BLEND);
   render_control(winid);
   gl_window_swap(win);
 }

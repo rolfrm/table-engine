@@ -15,7 +15,7 @@ string_redirect_table * string_redirect;
 string_redirect_table * string_history_redirect;
 u64 console_class;
 //u64 console_add_history_methods;
-//u64 console_command_entered_method;
+u64 console_command_entered_method;
 
 static void write_char(u64 console, char chr){
   u64 index = 0;
@@ -39,14 +39,26 @@ static void write_char(u64 console, char chr){
   u64_table_set(console_index, console, index + 1);  
 }
 
+void console_push_history(u64 console, char * string){
+  int len = strlen(string);
+  string_table_indexes string_index2 = string_table_alloc_sequence(console_strings, len);
+  char * outstr = console_strings->data + string_index2.index;
+  memcpy(outstr, string, len);
+  string_redirect_table_set(string_history_redirect, console, string_index2);
+}
 
 static void enter_command(u64 console){
   string_table_indexes string_index = {0};
   if(string_redirect_table_try_get(string_redirect, &console, &string_index)){
-    //string_table_remove_sequence(console_strings, &string_index);
     string_redirect_table_set(string_history_redirect, console, string_index);
     string_redirect_table_unset(string_redirect, console);
     u64_table_unset(console_index, console);
+
+    char * ptr = console_strings->data + string_index.index;
+    void (* m)(u64 console, char * string, u32 length) = class_get_method(console, console_command_entered_method);
+    if(m != NULL)
+      m(console, ptr, string_index.count);
+    
   }
 }
 
@@ -174,6 +186,7 @@ void console_init(){
   console_index = u64_table_create("console index");
   string_redirect = string_redirect_table_create("string/redirect");
   string_history_redirect = string_redirect_table_create("string/redirect/history");
+  console_command_entered_method = intern_string("console/command entered");
   ((bool *)&string_history_redirect->is_multi_table)[0] = true;
   class_set_method(console_class, render_control_method, (void *) console_render);
   class_set_method(console_class, key_event_method, (void *) handle_key_event);

@@ -43,4 +43,7 @@ void textbox_init();
 
 // console
 extern u64 console_class;
+// void f (u64 console, char * command, u32 length)
+extern u64 console_command_entered_method;
 void console_init();
+void console_push_history(u64 console, char * string);

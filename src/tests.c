@@ -41,6 +41,13 @@ void render_test_window2(u64 id){
   render_text(l, strlen(l), window_size, vec2_new(0, 0));
 }
 
+void handle_command_entered(u64 console, char * command, u32 length){
+  u8 cmd[length + 1];
+  memcpy(cmd, command, length);
+  cmd[length] = 0;
+  logd("executed: '%s'\n", cmd);
+}
+
 void test_graphics(){
 
   u64 win = control_new_named("test_window");
@@ -59,6 +66,7 @@ void test_graphics(){
   set_class(console, console_class);
   class_set_method(win, render_control_method, NULL);
   class_set_method(win2, render_control_method, render_test_window2);
+  class_set_method(console, console_command_entered_method, handle_command_entered);
 
   control_set_focus(win, console);
  

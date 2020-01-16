@@ -29,16 +29,25 @@ bool control_try_get_size(u64 control, double * width, double * height){
   return true;
 }
 
-control_size * window_position_table;
+control_size * control_position_table;
 
 void control_set_position(u64 control, f64 x, f64 y){
-  control_size_set(window_position_table, control, x, y);
+  control_size_set(control_position_table, control, x, y);
 }
 
 bool control_get_position(u64 control, f64 *x, f64 * y){
-  return control_size_try_get(window_position_table, &control, x, y);
+  return control_size_try_get(control_position_table, &control, x, y);
 }
 
+static control_size * window_position_table;
+
+void window_set_position(u64 control, f64 x, f64 y){
+  control_size_set(window_position_table, control, x, y);
+}
+
+bool window_get_position(u64 control, f64 *x, f64 * y){
+  return control_size_try_get(window_position_table, &control, x, y);
+}
 
 u64_table * class;
 
@@ -148,7 +157,8 @@ void control_set_focus(u64 window, u64 control){
 void init_module(){
   printf("Initialized graphics\n");
   control_size_table = control_size_create("control size");
-  window_position_table = control_size_create("control position");
+  control_position_table = control_size_create("control position");
+  window_position_table = control_size_create("window position");
   class = u64_table_create("control class");
   sub_controls = u64_table_create("control subs");
   
@@ -207,6 +217,11 @@ void process_events(){
       int w = evt.window_size_change.width;
       int h = evt.window_size_change.height;
       control_set_size(key, w, h);
+    }
+    else if(type == EVT_WINDOW_MOVE){
+      int x = evt.window_position_change.x;
+      int y = evt.window_position_change.y;
+      window_set_position(key, (f64) x, (f64) y);
     }else{
       u64 out_ctrl = 0;
       if(u64_table_try_get(focused_controls, &key, &out_ctrl)){
@@ -224,7 +239,11 @@ void render_window(u64 winid){
   if(!u64_table_try_get(window_pointers, &winid, (u64 *) &win)){
     win = gl_window_open(512, 512);
     process_events();
-    u64_table_set(window_pointers, winid, (u64) win);   
+    u64_table_set(window_pointers, winid, (u64) win);
+    f64 x, y;
+    if(window_get_position(winid, &x, &y)){
+      gl_window_set_position(win, (int)x, (int)y);
+    }
   }
   int w,h;
   gl_window_get_size(win, &w, &h);

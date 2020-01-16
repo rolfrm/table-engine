@@ -41,6 +41,30 @@ void render_test_window2(u64 id){
   render_text(l, strlen(l), window_size, vec2_new(0, 0));
 }
 
+void process_command(u64 console, const char * cmd){
+  const char * cmdp = cmd;
+  const char * cmdp2 = cmd;
+  while(*cmdp != 0){
+    if(cmdp[0] == ' ' || cmdp[1] == 0){
+      
+      int l = cmdp - cmdp2;
+      if(cmdp[1] == 0)
+	l += 1;
+      printf("Yes? %i\n", l);
+      if(l > 1){
+	char buf[l + 1];
+	memcpy(buf, cmdp2, l);
+	buf[l] = 0;
+	console_push_history(console, buf);	
+      }
+      cmdp2 = cmdp + 1;
+    }
+
+    cmdp += 1;
+
+  }
+}
+
 void handle_command_entered(u64 console, char * command, u32 length){
   u8 cmd[length + 1];
   memcpy(cmd, command, length);
@@ -48,6 +72,7 @@ void handle_command_entered(u64 console, char * command, u32 length){
   logd("executed: '%s'\n", cmd);
   var cmd2 = fmtstr("Executed> %s", cmd);
   console_push_history(console, cmd2);
+  process_command(console, cmd);
   dealloc(cmd2);
 }
 

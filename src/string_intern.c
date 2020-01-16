@@ -64,7 +64,17 @@ u64 intern_string(const char * name){
   u64 newid = id_new();
   u64_table_insert(table, (u64 *) buffer, &newid, 1);
   return newid;
-  
+}
+
+bool intern_string_get(const char * name, u64 * value){
+  int len = strlen(name) / 8 + 1;
+  if(len == -1)
+    return false;
+  u64_table * table = string_table_get(len);
+  char buffer[len * 8];
+  memset(buffer, 0, len * 8);
+  memmove(buffer, name, strlen(name));
+  return u64_table_try_get(table, (u64 *) buffer, value);
 }
 
 u64 intern_aggregate(u64 intern1, u64 intern2){

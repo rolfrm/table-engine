@@ -39,7 +39,7 @@ static void write_char(u64 console, char chr){
   u64_table_set(console_index, console, index + 1);  
 }
 
-void console_push_history(u64 console, char * string){
+void console_push_history(u64 console, const char * string){
   int len = strlen(string);
   string_table_indexes string_index2 = string_table_alloc_sequence(console_strings, len);
   char * outstr = console_strings->data + string_index2.index;
@@ -108,7 +108,6 @@ static void handle_key_event(u64 console, gl_window_event evt){
 	  u64_table_set(console_index, console, index);
 	}	
       }
-      printf("INDEX: %i\n", index);
     }
     if(evt.key.key == KEY_ENTER){
       enter_command(console);
@@ -117,7 +116,7 @@ static void handle_key_event(u64 console, gl_window_event evt){
       handle_backspace(console);
     }
     else{
-      printf("Unhandled key: %i\n", evt.key.key);
+      //printf("Unhandled key: %i\n", evt.key.key);
     }
   }
   else if(evt.type == EVT_KEY_UP){

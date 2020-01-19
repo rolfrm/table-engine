@@ -12,6 +12,41 @@ u64 control_new(){
   return id_new();
 }
 
+
+u64_table * registered_tables;
+
+void register_table(void * _table){
+  
+  icy_table * table = _table;
+  const char * name = NULL;
+  icy_mem ** t = icy_table_get_memory_areas(table);
+  icy_mem * area;
+  int len = 0;
+  for(int i = 0; i < table->column_count;i++){
+    printf("Table %i\n", i);
+    if(t[i]->name == NULL) return;
+    name = t[i]->name;
+    len = strlen(table->column_names[i]);
+    area = t[i];
+    //printf("Name: %s %s\n", t[i]->name, table->column_names[i]);
+    break;
+  }
+  int len2 = strlen(area->name) - len - 1;
+  char buffer[len2 + 1];
+  buffer[len2] = 0;
+  memcpy(buffer, area->name, len2);
+  printf("name: %s\n", buffer);
+  u64 key = intern_string(buffer);
+  u64_table_set(registered_tables, key, (size_t) table);
+}
+
+void * table_get_named(const char * name){
+  u64 intern, ptr;
+  if(intern_string_get(name, &intern) && u64_table_try_get(registered_tables, &intern, &ptr))
+    return (void *) ptr;
+  return NULL;
+}
+
 u64 control_new_named(const char * name){
   return intern_string(name);
 }
@@ -95,7 +130,7 @@ u64 control_get_subs(u64 object, u64 * array, u64 count, u64 * index){
   u64 indexes[10];
   u64 cnt = 0;
   u64 tcnt = 0;
-  while(0 < (cnt = u64_table_iter(sub_controls, &object, 1, NULL, indexes, MIN(count, 10), index))){
+  while(0 < (cnt = u64_table_iter(sub_controls, &object, 1, NULL, indexes, MIN(count, array_count(indexes)), index))){
     for(u64 i = 0; i < cnt; i++)
       array[i] = sub_controls->value[indexes[i]];
   
@@ -156,11 +191,18 @@ void control_set_focus(u64 window, u64 control){
 
 void init_module(){
   printf("Initialized graphics\n");
+  registered_tables = u64_table_create(NULL);
   control_size_table = control_size_create("control size");
   control_position_table = control_size_create("control position");
   window_position_table = control_size_create("window position");
   class = u64_table_create("control class");
   sub_controls = u64_table_create("control subs");
+
+  register_table(control_size_table);
+  register_table(control_position_table);
+  register_table(window_position_table);
+  register_table(class);
+  register_table(sub_controls);
   
   ((bool *)&sub_controls->is_multi_table)[0] = true;
   

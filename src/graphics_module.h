@@ -1,6 +1,6 @@
 void register_table(void * table);
 void * table_get_named(const char * name);
-  
+
 u64 control_new_named(const char * name);
 extern u64 window_class;
 extern u64 control_class;

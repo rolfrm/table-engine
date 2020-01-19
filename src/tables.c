@@ -14,3 +14,5 @@
 #include "u64_pair_to_u64.h"
 #include "u64_pair_to_u64.c"
 
+#include "string_redirect_table.h"
+#include "string_redirect_table.c"

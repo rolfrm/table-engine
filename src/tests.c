@@ -4,6 +4,7 @@
 #include "string_intern.h"
 #include "graphics_module.h"
 #include "u64_table.h"
+#include "test.h"
 
 void test_string_intern(){
  u64 a = intern_string("Hello world");
@@ -61,6 +62,10 @@ void call_command(u64 console, u64 method, const char * cmd){
   call_command_console = 0;
 }
 
+bool is_command(u64 cmd){
+  return class_get_method(cmd, invoke_command_method) != NULL;
+}
+
 void parse_command(u64 console, const char * cmd){
   const char * cmdp = cmd;
   const char * cmdp2 = cmd;
@@ -80,7 +85,13 @@ void parse_command(u64 console, const char * cmd){
 	  if(id == 0){
 	    id = id1;
 	  }else{
-	    id = intern_aggregate(id, id1);
+	    u64 next_id = intern_aggregate(id, id1);
+	    if(is_command(next_id)){
+	      id = next_id;
+	    }else{
+	      call_command(console, id, cmdp2);
+	      return;
+	    }
 	  }
 	}else{
 	  call_command(console, id, cmdp2);
@@ -143,38 +154,52 @@ static void print_table(char * command){
       }
       console_log(buf);
     }
-  }
-  
+  } 
 }
 
+int load_module(const char * name);
+static void load_module_handler(char * module){
+  load_module(module);
+}
+
+void continue_init_load();
+
 void test_graphics(){
+
+  { // window 1;
+    u64 win = control_new_named("test_window");
+    
+    set_class(win, window_class);
+
+    u64 decorator = control_new_named("test_window console decorator");
+    set_class(decorator, control_class);
+    u64 console = control_new_named("test_window console");
+    printf("win/console: %i %i\n", win, console);
+    if(get_class(console) == 0){
+      control_add_sub(win, decorator);
+      control_add_sub(decorator, console);
+    }
+    control_set_position(decorator, 10, 10);
+    set_class(console, console_class);
+    class_set_method(win, render_control_method, NULL);
+    class_set_method(console, console_command_entered_method, handle_command_entered);
+    
   
-  u64 win = control_new_named("test_window");
-  u64 win2 = control_new_named("test_window2");
-  set_class(win, window_class);
-
-  u64 decorator = control_new_named("test_window console decorator");
-  set_class(decorator, control_class);
-  u64 console = control_new_named("test_window console");
-  printf("win/console: %i %i\n", win, console);
-  if(get_class(console) == 0){
-    control_add_sub(win, decorator);
-    control_add_sub(decorator, console);
+    control_set_focus(win, console);
+    show_window(win);
   }
-  control_set_position(decorator, 10, 100);
-  set_class(console, console_class);
-  class_set_method(win, render_control_method, NULL);
-  class_set_method(win2, render_control_method, render_test_window2);
-  class_set_method(console, console_command_entered_method, handle_command_entered);
-
-  control_set_focus(win, console);
-  invoke_command_method = intern_string("console invoke command");
-  u64 print_table_cmd = intern_aggregate(intern_string("print"), intern_string("table"));
-  class_set_method(print_table_cmd, invoke_command_method, print_table);
+  
 
 
-  show_window(win);
-  show_window(win2);
+
+  { // window 2;
+    u64 win2 = control_new_named("test_window2");
+    class_set_method(win2, render_control_method, render_test_window2);
+    show_window(win2);
+  }
+
+  // load the rest of the modules!
+  continue_init_load();
   
   while(graphics_process_active_window_count()){
     iron_usleep(10000);
@@ -184,8 +209,20 @@ void test_graphics(){
   printf("all windows closed\n");
 }
 
+
 void init_module(){
   printf("running tests\n");
   test_string_intern();
+
+
+  invoke_command_method = intern_string("console invoke command");
+  u64 print_table_cmd = intern_aggregate(intern_string("print"), intern_string("table"));
+  class_set_method(print_table_cmd, invoke_command_method, print_table);
+  
+  u64 load_module_cmd = intern_aggregate(intern_string("load"), intern_string("module"));
+  class_set_method(load_module_cmd, invoke_command_method, load_module_handler);
+
+  canvas_init();
+  
   test_graphics();
 }

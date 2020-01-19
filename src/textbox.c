@@ -3,7 +3,6 @@
 #include "string_table.h"
 #include "string_intern.h"
 #include "string_redirect_table.h"
-#include "string_redirect_table.c"
 
 u64 textbox_class;
 

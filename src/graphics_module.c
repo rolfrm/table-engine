@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <iron/full.h>
 #include <iron/gl.h>
-#include <GL/gl.h>
 #include "string_intern.h"
 #include "control_size.h"
 #include "control_size.c"
@@ -24,11 +23,10 @@ void register_table(void * _table){
   int len = 0;
   for(int i = 0; i < table->column_count;i++){
     printf("Table %i\n", i);
-    if(t[i]->name == NULL) return;
+    if(t[i]->name == NULL) continue;
     name = t[i]->name;
     len = strlen(table->column_names[i]);
     area = t[i];
-    //printf("Name: %s %s\n", t[i]->name, table->column_names[i]);
     break;
   }
   int len2 = strlen(area->name) - len - 1;
@@ -38,6 +36,16 @@ void register_table(void * _table){
   printf("name: %s\n", buffer);
   u64 key = intern_string(buffer);
   u64_table_set(registered_tables, key, (size_t) table);
+}
+
+size_t u64_table_iter(u64_table * table, u64 * keys, size_t keycnt, u64 * optional_keys_out, size_t * indexes, size_t cnt, size_t * iterator);
+
+void iterate_tables(void (*f )(icy_table *table, void * userdata), void * userdata){
+
+  u64_table * table = registered_tables;
+  for(int i = 0; i < table->count; i++){
+    f((void *) table->value[i + 1], userdata);
+  }
 }
 
 void * table_get_named(const char * name){
@@ -122,7 +130,24 @@ void * class_get_method(u64 object, u64 method){
 
 u64_table * sub_controls;
 
+bool control_has_sub(u64 object, u64 subobject){
+
+  u64 array[10];
+
+  u64 index = 0;
+  u64 cnt;
+  while((cnt = control_get_subs(object, array, array_count(array), &index))){
+    for(u64 i = 0; i < cnt; i++){
+      if(array[i] == subobject)
+	return true;
+    }
+  }
+  return false;
+}
+
 void control_add_sub(u64 object, u64 subobject){
+  if(control_has_sub(object, subobject))
+    return;
   u64_table_set(sub_controls, object, subobject);
 }
 
@@ -153,9 +178,6 @@ void unshow_window(u64 windowid){
   u64_table_unset(windows, windowid);
 }
 
-
-
-
 u64_table * window_pointers;
 u64 render_control_method;
 u64 key_event_method;
@@ -163,6 +185,7 @@ u64 control_class;
 u64 window_class;
 vec2 current_control_offset;
 static void control_render(u64 control){
+  
   u64 idx = 0;
   u64 subs[10];
   u64 cnt = 0;
@@ -277,6 +300,7 @@ void process_events(){
 }
 
 void render_window(u64 winid){
+
   gl_window * win;
   if(!u64_table_try_get(window_pointers, &winid, (u64 *) &win)){
     win = gl_window_open(512, 512);
@@ -304,14 +328,16 @@ void render_window(u64 winid){
     }
     w = w2i;
     h = h2i;
-    glViewport(0,0,w,h);
   }
 
   window_size = vec2_new(w, h);
   current_control_offset = vec2_zero;
-  glClear(GL_COLOR_BUFFER_BIT);
-  glEnable(GL_BLEND);
-  render_control(winid);
+  blit_begin(BLIT_MODE_UNIT);
+  blit_clear();
+
+  blit_begin(BLIT_MODE_PIXEL_SCREEN);
+
+  control_render(winid);
   gl_window_swap(win);
 }
 

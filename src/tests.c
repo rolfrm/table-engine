@@ -6,6 +6,13 @@
 #include "u64_table.h"
 #include "test.h"
 
+#include "f32_f32_vector.h"
+#include "u64_f32_f32_vector_index.h"
+
+extern f32_f32_vector * points;
+extern u64_f32_f32_vector_index * polygon_table;
+extern u64_table * canvas_polygons;
+
 void test_string_intern(){
  u64 a = intern_string("Hello world");
   u64 b = intern_string("HHHHHHHHHHHEEEEEEEEEEELLLLLLLLLLLLLLOOOOOOOO");
@@ -124,6 +131,7 @@ static void print_table(char * command){
     printf("Key exists! %i\n", p);
   }
   icy_table * t = table_get_named(command);
+  printf("Priting table %s: %p\n", command, t);
   //char * s = fmtstr("print table '%s' %p", command, t);
   //console_log(s);
   //dealloc(s);
@@ -162,6 +170,32 @@ static void load_module_handler(char * module){
   load_module(module);
 }
 
+static void print_test(char * printcmd){
+  printf("PRINT: |%s|\n", printcmd);
+}
+
+void iterate_tables(void (*f )(icy_table *table, void * userdata), void * userdata);
+
+static void print_single_table(icy_table * table, void * userdata){
+  icy_mem ** t = icy_table_get_memory_areas(table);
+  
+  console_log(t[0]->name);
+}
+
+static void print_tables(char * printcmd){
+  iterate_tables(print_single_table, NULL);
+}
+
+bool should_exit = false;
+
+void exit_command(char * args){
+  UNUSED(args);
+  should_exit = true;
+  console_log("Application exited by user");
+  printf("Application exited by user\n");
+}
+
+
 void continue_init_load();
 
 void test_graphics(){
@@ -181,39 +215,63 @@ void test_graphics(){
     }
     control_set_position(decorator, 10, 10);
     set_class(console, console_class);
-    class_set_method(win, render_control_method, NULL);
     class_set_method(console, console_command_entered_method, handle_command_entered);
-    
-  
+      
     control_set_focus(win, console);
     show_window(win);
   }
   
 
-
-
   { // window 2;
     u64 win2 = control_new_named("test_window2");
-    class_set_method(win2, render_control_method, render_test_window2);
+    u64 decorator = control_new_named("test window2 dec");
+    set_class(decorator, control_class);
+    u64 canvas = control_new_named("test_window2 canvas");
+    
+    set_class(canvas, canvas_class);
+    set_class(win2, window_class);
+    printf("Canvas: %i\n", canvas_class);
+    control_add_sub(win2, decorator);
+    control_add_sub(decorator, canvas);
+    printf("Win2: %i\n", win2);
+    control_set_position(decorator, 10, 10);
+    control_set_size(canvas, 50, 50);
+    u64 polygon1 = intern_string("polygon1");
+    u64_table_set(canvas_polygons, canvas, polygon1);
+    f32_f32_vector_indexes indx;
+    if(!u64_f32_f32_vector_index_try_get(polygon_table, &polygon1, &indx)){
+      indx = f32_f32_vector_alloc_sequence(points, 4);
+      f32 * x = points->x + indx.index;
+      f32 * y = points->y + indx.index;
+      x[0] = 1; x[1] = 1; x[2] = 0; x[3] = 0;
+      y[0] = 0; y[1] = 1; y[2] = 0; y[3] = 1;
+      u64_f32_f32_vector_index_set(polygon_table, polygon1, indx);
+      printf("Configure a new polygon");
+
+    }
     show_window(win2);
   }
 
   // load the rest of the modules!
   continue_init_load();
   
-  while(graphics_process_active_window_count()){
+  while(!should_exit && graphics_process_active_window_count()){
     iron_usleep(10000);
     graphics_process();
+  }
+  if(should_exit){
+
   }
 
   printf("all windows closed\n");
 }
 
 
+
+
 void init_module(){
   printf("running tests\n");
   test_string_intern();
-
 
   invoke_command_method = intern_string("console invoke command");
   u64 print_table_cmd = intern_aggregate(intern_string("print"), intern_string("table"));
@@ -221,6 +279,15 @@ void init_module(){
   
   u64 load_module_cmd = intern_aggregate(intern_string("load"), intern_string("module"));
   class_set_method(load_module_cmd, invoke_command_method, load_module_handler);
+
+  u64 print_test_cmd = intern_aggregate(intern_string("print"), intern_string("test"));
+  class_set_method(print_test_cmd, invoke_command_method, print_test);
+
+  u64 print_tables_cmd = intern_aggregate(intern_string("print"), intern_string("tables"));
+  class_set_method(print_tables_cmd, invoke_command_method, print_tables);
+
+  u64 exit_cmd = intern_aggregate(intern_string("exit"), intern_string("now"));
+  class_set_method(exit_cmd, invoke_command_method, exit_command);
 
   canvas_init();
   

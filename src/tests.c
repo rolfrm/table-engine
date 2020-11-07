@@ -208,7 +208,7 @@ void test_graphics(){
     u64 decorator = control_new_named("test_window console decorator");
     set_class(decorator, control_class);
     u64 console = control_new_named("test_window console");
-    printf("win/console: %i %i\n", win, console);
+    printf("win/console: %i %i %s\n", win, console, control_get_name(console));
     if(get_class(console) == 0){
       control_add_sub(win, decorator);
       control_add_sub(decorator, console);
@@ -266,7 +266,13 @@ void test_graphics(){
   printf("all windows closed\n");
 }
 
+void print_named_control(u64 control, const char * name, void * userdata){
+  console_log(name);
+}
 
+void print_named_controls(char * args){
+  named_controls_iterate(print_named_control, NULL);
+}
 
 
 void init_module(){
@@ -286,6 +292,9 @@ void init_module(){
   u64 print_tables_cmd = intern_aggregate(intern_string("print"), intern_string("tables"));
   class_set_method(print_tables_cmd, invoke_command_method, print_tables);
 
+  u64 print_controls_cmd = intern_aggregate(intern_string("print"), intern_string("named_controls"));
+  class_set_method(print_controls_cmd, invoke_command_method, print_named_controls);
+  
   u64 exit_cmd = intern_aggregate(intern_string("exit"), intern_string("now"));
   class_set_method(exit_cmd, invoke_command_method, exit_command);
 

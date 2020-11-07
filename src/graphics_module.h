@@ -2,6 +2,9 @@ void register_table(void * table);
 void * table_get_named(const char * name);
 
 u64 control_new_named(const char * name);
+const char * control_get_name(u64 id);
+void named_controls_iterate(void (* f)(u64 control, const char * name, void * userdata), void * userdata);
+
 extern u64 window_class;
 extern u64 control_class;
 void control_set_size(u64 control, double width, double height);

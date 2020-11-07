@@ -55,8 +55,27 @@ void * table_get_named(const char * name){
   return NULL;
 }
 
+u64_table * control_names;
+
 u64 control_new_named(const char * name){
-  return intern_string(name);
+  u64 c = intern_string(name);
+  u64_table_set(control_names, c, (u64) fmtstr("%s", name));
+  return c;
+}
+
+const char * control_get_name(u64 id){
+  u64 p;
+  if(u64_table_try_get(control_names, &id, &p))
+     return (const char *) p;
+  return NULL;
+}
+
+
+void named_controls_iterate(void (* f)(u64 control, const char * name, void * userdata), void * userdata){
+  u64_table * table = control_names;
+  for(int i = 0; i < table->count; i++){
+    f((u64) table->key[i + 1], (const char *) table->value[i + 1], userdata);
+  }  
 }
 
 control_size * control_size_table;
@@ -214,6 +233,7 @@ void control_set_focus(u64 window, u64 control){
 
 void init_module(){
   printf("Initialized graphics\n");
+  control_names = u64_table_create(NULL);
   registered_tables = u64_table_create(NULL);
   control_size_table = control_size_create("control size");
   control_position_table = control_size_create("control position");

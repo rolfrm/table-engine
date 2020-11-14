@@ -1,4 +1,6 @@
 all:
+	make -C iron
+	cp iron/libiron.so ./
 	make -f makefile.engine
 	make -f makefile.graphics
 	make -f makefile.test

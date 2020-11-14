@@ -28,7 +28,7 @@ int load_module(const char * name){
 
   void * module = dlopen(name, RTLD_NOW | RTLD_GLOBAL);
   if(module == NULL){
-    logd("Unable to load module %s\n", name);
+    logd("Unable to load module %s\n%s\n", name, dlerror());
     return -1;
   }
 
@@ -64,7 +64,13 @@ void continue_init_load(){
   init_load();
 }
 
+
+void binui_test();
+
 int main(){
+  //binui_test();
+  //return 0;
+  
   logd_enable = true;
   loaded_modules = u64_table_create(NULL);
   modules = string_redirect_table_create("modules");

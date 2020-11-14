@@ -1,8 +1,5 @@
 #include <iron/full.h>
 #include <iron/gl.h>
-#define GL_GLEXT_PROTOTYPES
-#include <GL/glcorearb.h>
-
 #include "graphics_module.h"
 
 #include "string_intern.h"
@@ -11,22 +8,68 @@
 #include "u64_f32_f32_vector_index.h"
 #include "u64_f32_f32_vector_index.c"
 #include "u64_table.h"
-
+#include "model.h"
 f32_f32_vector * points;
 u64_f32_f32_vector_index * polygon_table;
 u64_table * canvas_polygons;
+u64_table * loaded_polygons;
+
+u64_table * canvas_contexts;
+typedef struct {
+  blit3d_context * blit3d;
+
+}canvas_context;
+
 u64 canvas_class;
 static u32 camera_loc, color_loc, vertex_loc, depth_loc;
-void canvas_render_polygon(u64 polygon){
-  
+
+model * get_or_create_polygon(u64 polygon){
+  u64 ptr;
+  if(!u64_table_try_get(loaded_polygons, &polygon, &ptr)){
+    model mod = {0};
+    mod.scale = vec3_new(1,1,1);
+    mod.color = vec4_new(1,1,1,1);
+    mod.type = 0;
+    mod.verts = blit3d_polygon_new();
+    f32_f32_vector_indexes indx;
+    if(u64_f32_f32_vector_index_try_get(polygon_table, &polygon, &indx)){
+      f32 * x = points->x + indx.index;
+      f32 * y = points->y + indx.index;
+      float pts[2 * indx.count];
+      for(int i = 0; i < indx.count; i++){
+	pts[i * 2] = x[i];
+	pts[i * 2 + 1] = y[i];
+      }
+      blit3d_polygon_load_data(mod.verts, pts, indx.count * 2 * sizeof(f32));
+      blit3d_polygon_configure(mod.verts, 2);
+    }
+    
+    model * _mod = iron_clone(&mod, sizeof(mod));
+    u64_table_set(loaded_polygons, polygon, (u64)_mod);
+    printf("Created polygon...\n");
+    return _mod;
+  }
+  return (void *) ptr;
+}
+
+void canvas_render_polygon(canvas_context * ctx, model * mod){
+
+}
+
+canvas_context * canvas_get_context(u64 canvas){
+  u64 ptr;
+  if(!u64_table_try_get(canvas_contexts, &canvas, &ptr)){
+    canvas_context * ctx = alloc0(sizeof(canvas_context));
+    ctx->blit3d  = blit3d_context_new();
+ 
+    u64_table_set(canvas_contexts, canvas, (u64) ctx);
+    return ctx;
+  }
+  return (canvas_context *) ptr;
 }
 
 void render_canvas(u64 canvas){
-  static int initialized = false;
-  static int shader = -1;
-  if(!initialized){
-    initialized = true;
-  }
+  canvas_context * ctx = canvas_get_context(canvas);
 
   double w, h;
   if(!control_try_get_size(canvas, &w, &h)){
@@ -37,9 +80,13 @@ void render_canvas(u64 canvas){
   vec2 pos = current_control_offset;
   blit_rectangle(pos.x,pos.y,w,h,1,1,1,1);
   u64 index = 0, cnt = 0, idx;
+
+  blit3d_context_load(ctx->blit3d);
+  
   while((cnt = u64_table_iter(canvas_polygons, &canvas, 1, NULL, &idx, 1, &index))){
-    
-    canvas_render_polygon(canvas_polygons->value[idx]);
+    model * mod = get_or_create_polygon(canvas_polygons->value[idx]);     
+    canvas_render_polygon(ctx, mod);
+    mat4_rotate_3d_transform(0,0,0,0,0,0);
   }
 }
 
@@ -48,6 +95,8 @@ void canvas_init(){
   points = f32_f32_vector_create("canvas points");
   polygon_table = u64_f32_f32_vector_index_create("canvas polygons");
   canvas_polygons = u64_table_create("polygons");
+  loaded_polygons = u64_table_create(NULL);
+  canvas_contexts = u64_table_create(NULL);
   register_table(polygon_table);
   ((bool *)(&canvas_polygons->is_multi_table))[0] = true;
   class_set_method(canvas_class, render_control_method, render_canvas);

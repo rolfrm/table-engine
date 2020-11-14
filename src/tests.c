@@ -243,8 +243,8 @@ void test_graphics(){
       indx = f32_f32_vector_alloc_sequence(points, 4);
       f32 * x = points->x + indx.index;
       f32 * y = points->y + indx.index;
-      x[0] = 1; x[1] = 1; x[2] = 0; x[3] = 0;
-      y[0] = 0; y[1] = 1; y[2] = 0; y[3] = 1;
+      x[0] = 1; x[1] = 1; x[2] = 0; x[3] = -1;
+      y[0] = 0; y[1] = 1; y[2] = 0; y[3] = 2;
       u64_f32_f32_vector_index_set(polygon_table, polygon1, indx);
       printf("Configure a new polygon");
 

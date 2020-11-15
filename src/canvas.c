@@ -117,7 +117,7 @@ void render_canvas(u64 canvas){
 
   io_reset(&ctx->wd);
   blit_push();
-  blit_begin(BLIT_MODE_PIXEL_SCREEN);
+  blit_begin(BLIT_MODE_PIXEL);
   binui_iterate(&ctx->binui, &ctx->wd, NULL, NULL);
   blit_pop();		
   rectangle_handle = NULL;

@@ -1,4 +1,4 @@
-OPT = -g0 -Os
+OPT = -g3 -O1
 LIB_SOURCES1 = tests.c canvas.c binui.c
 
 LIB_SOURCES = $(addprefix src/, $(LIB_SOURCES1))

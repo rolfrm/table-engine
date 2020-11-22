@@ -78,12 +78,13 @@ canvas_context * canvas_get_context(u64 canvas){
 
 static void blit_rectangle3(void * userdata){
   var ctx = (canvas_context *) userdata;
+  if(ctx == NULL) return;
   int x, y;
   u32 w, h;
   u32 color;
-  binui_get_position(&x, &y);
-  binui_get_size(&w, &h);
-  binui_get_color(&color);
+  binui_get_position(&ctx->binui, &x, &y);
+  binui_get_size(&ctx->binui, &w, &h);
+  binui_get_color(&ctx->binui, &color);
   f32 r,g,b,a;
   r = (color & 0xFF) * (1.0 / 255.0); 
   g = ((color >> 8) & 0xFF) * (1.0 / 255.0);
@@ -118,7 +119,7 @@ void render_canvas(u64 canvas){
   io_reset(&ctx->wd);
   blit_push();
   blit_begin(BLIT_MODE_PIXEL);
-  binui_iterate(&ctx->binui, &ctx->wd, NULL, NULL);
+  binui_iterate(&ctx->binui, &ctx->wd, NULL, ctx);
   blit_pop();		
   rectangle_handle = NULL;
 }

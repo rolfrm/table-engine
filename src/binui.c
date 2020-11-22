@@ -16,6 +16,7 @@ void binui_types_add(binui_types * types, u8 type, u8 opcode_size){
 const u8 BINUI_OPCODE_VLEN = 255;
 
 void binui_init(binui_context * ctx){
+  memset(ctx, 0, sizeof(ctx[0]));
   ctx->type_table = binui_types_create(NULL);
   binui_types_add(ctx->type_table, 0, 0);
   binui_types_add(ctx->type_table, 0, BINUI_OPCODE_VLEN);
@@ -34,23 +35,17 @@ const int BINUI_SIZE = 5;
 const int BINUI_COLOR = 6;
 const int BINUI_MAGIC = 0x5a;
 
-static u32 current_color;
+// registers
+
 static u32 current_width, current_height;
-static i32 current_x, current_y;
 
-void binui_get_color(u32 * color){
-  *color = current_color;
-}
 
-void binui_get_size(u32 * w, u32 * h){
+void binui_get_size(binui_context * ctx, u32 * w, u32 * h){
   *w = current_width;
   *h = current_height;
 }
 
-void binui_get_position(i32 * x, i32 * y){
-  *x = current_x;
-  *y = current_y;
-}
+
 
 void (* rectangle_handle)(void * userdata);
 const int BINUI_MAX_STACK_SIZE = 1024;
@@ -70,17 +65,171 @@ typedef struct{
 
 }data_struct;
 
+typedef struct{
+  void * elements;
+  size_t capacity;
+  size_t count;
+}stack;
+
+void stack_push(stack * stk, void * data, size_t count){
+  if(stk->count + count >= stk->capacity){
+    size_t newcap = stk->count * 2 + count;
+    stk->capacity = newcap;
+    stk->elements= realloc(stk->elements, newcap);
+  }
+  memcpy(stk->elements + stk->count, data, count);
+  stk->count += count;
+}
+
+void stack_pop(stack * stk, void * data, size_t count){
+  ASSERT(stk->count >= count);
+  stk->count -= count;
+  if(data != NULL)
+    memcpy(data, stk->elements + stk->count, count);
+}
+
+void stack_top(stack * stk, void * data, size_t count){
+  memcpy(data, stk->elements + stk->count - count, count);
+}
+
+
+typedef struct {
+  u32 size;
+  u32 id;
+}binui_register;
+
+void * binui_get_register(binui_context * ctx, binui_register * registerID){
+  static u32 register_counter = 1;
+  if(registerID->id == 0){
+
+    registerID->id = register_counter;
+    register_counter += registerID->size;
+
+  }
+  
+  while(registerID->id + registerID->size >= ctx->reg_cap){
+    u32 new_size = (registerID->id + registerID->size) * 2;
+    ctx->registers = realloc(ctx->registers, new_size);
+    // set all new registers to 0.
+    memset(ctx->registers + ctx->reg_cap, 0, new_size - ctx->reg_cap);
+    ctx->reg_cap = new_size;
+  }
+  return ctx->registers + registerID->id;
+}
+
+typedef struct {
+  u32 size;
+  binui_register stack;
+}binui_stack_register;
+
+
+void binui_stack_register_push(binui_context * ctx, binui_stack_register * reg, void * value){
+  reg->stack.size = sizeof(stack);
+  stack * stk = binui_get_register(ctx, &reg->stack);
+  stack_push(stk, value, reg->size);
+}
+
+void binui_stack_register_pop(binui_context * ctx, binui_stack_register * reg, void * value){
+  stack * stk = binui_get_register(ctx, &reg->stack);
+  stack_pop(stk, value, reg->size);
+}
+
+bool binui_stack_register_top(binui_context * ctx, binui_stack_register * reg, void * value){
+  stack * stk = binui_get_register(ctx, &reg->stack);
+  if(stk->count == 0) return false;
+  stack_top(stk, value, reg->size);
+  return true;
+}
+
+binui_stack_register color_register ={.size =sizeof(u32), .stack = {0}};
+void push_color(binui_context * ctx, u32 color){
+  binui_stack_register_push(ctx, &color_register, &color);
+}
+
+u32 pop_color(binui_context * ctx){
+  u32 color;
+  binui_stack_register_push(ctx, &color_register, &color);
+  return color;
+}
+
+u32 get_color(binui_context * ctx){
+  u32 color;
+  binui_stack_register_top(ctx, &color_register, &color);
+  return color;
+}
+
+void binui_get_color(binui_context * ctx, u32 *color){
+  *color = get_color(ctx);
+}
+
+void color_enter(binui_context * ctx, io_reader * reader){
+  u32 color = io_read_u32(reader);
+  push_color(ctx, color);
+  if(ctx->lisp)
+    printf("color %p", color);  
+}
+
+void color_exit(binui_context * ctx){
+  pop_color(ctx);
+}
+
+
+typedef struct{
+  i32 x, y;
+}posi;
+
+binui_stack_register position_reg = {.size = sizeof(posi), .stack = {0}};
+
+ 
+
+void position_get(binui_context * ctx, i32 * x, i32 * y){
+  posi pos = {0};
+  
+  if(binui_stack_register_top(ctx, &position_reg, &pos)){
+    *x = pos.x;
+    *y = pos.y;
+  }else{
+    *x = 0;
+    *y = 0;
+  }
+     
+}
+
+void binui_get_position(binui_context * ctx, i32 * x, i32 * y){
+  position_get(ctx, x, y);
+}
+
+void position_push(binui_context * ctx, int x, int y){
+  posi pos = {0};
+  binui_stack_register_top(ctx, &position_reg, &pos);
+  pos.x += x;
+  pos.y += y;
+  binui_stack_register_push(ctx, &position_reg, &pos);
+}
+
+void position_pop(binui_context * ctx){
+  binui_stack_register_pop(ctx, &position_reg, NULL);
+}
+
+void position_enter(binui_context * ctx, io_reader * reader){
+  i32 x  = io_read_i32_leb(reader);
+  i32 y  = io_read_i32_leb(reader);
+  if(ctx->lisp)
+    printf("translate %i %i", x, y);
+  position_push(ctx, x, y);
+}
+
+void position_exit(binui_context * ctx){
+  position_pop(ctx);
+}
+
+
+
 void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* callback)(binui_context *registers, void * userdata), void * userdata){
 
   const bool debug = false;
   const bool lisp = false;
   
-  void revert_color(void * userdata){
-    if(debug)
-      printf("revert color %i %i\n", current_color, userdata);
-    current_color = (u32) (size_t)userdata;
-  }
-
   void revert_size(void * userdata){
     
     data_struct ds;
@@ -91,20 +240,12 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* cal
     current_height = ds.size.h;
   }
 
-  void revert_position(void * userdata){
-    data_struct ds;
-    ds.user_data_ptr = userdata;
-    if(debug)
-      printf(":: POS: %i %i     %i %i\n", current_x, current_y, ds.pos.x, ds.pos.y);
-    current_x = ds.pos.x;
-    current_y = ds.pos.y;
-    
-  }
   
   int stack_level = 0;
   u32 childs[BINUI_MAX_STACK_SIZE];
   void * userdatas[BINUI_MAX_STACK_SIZE];
   void (* callbacks[BINUI_MAX_STACK_SIZE])(void * userdata);
+  
   while(true){
     u64 opcode = io_read_u64_leb(reader);
     u32 children = 0;
@@ -136,29 +277,17 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* cal
     }
     
     if(opcode == BINUI_COLOR){
-      u32 color  = io_read_u32(reader);
-      if(lisp)
-	printf("color %p", color);
-      userdatas[stack_level] = (void *) (size_t) current_color;
-      current_color = color;
+      color_enter(reg, reader);
       children = io_read_u64_leb(reader);
-      callbacks[stack_level] = revert_color;  
+      userdatas[stack_level] = reg;
+      callbacks[stack_level] = color_exit;  
     }
 
     if(opcode == BINUI_POSITION){
-      i32 x  = io_read_i32_leb(reader);
-      i32 y  = io_read_i32_leb(reader);
-      if(lisp)
-	printf("translate %i %i", x, y);
+      position_enter(reg, reader);
       children = io_read_u64_leb(reader);
-      data_struct ds;
-      ds.pos.x = current_x;
-      ds.pos.y = current_y;
-      current_x += x;
-      current_y += y;
-      
-      callbacks[stack_level] = revert_position;
-      userdatas[stack_level] = ds.user_data_ptr;
+      userdatas[stack_level] = reg;      
+      callbacks[stack_level] = position_exit;
     }
 
     if(opcode == BINUI_SIZE){
@@ -182,8 +311,11 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* cal
       if(rectangle_handle != NULL){
 	rectangle_handle(userdata);
       }
-      if(debug)
-	printf("paint: Rectangle %p (%i %i) (%i %i)\n", current_color, current_width, current_height, current_x, current_y);   
+      if(debug){
+	i32 x, y;
+	position_get(reg, &x, &y);
+	printf("paint: Rectangle %p (%i %i) (%i %i)\n", get_color(reg), current_width, current_height, x, y);
+      }
     }
 
     opcode = io_read_u64_leb(reader);
@@ -319,9 +451,36 @@ void binui_test_load(io_writer * wd){
 
 
 void binui_test(){
+
+  
+  
   binui_context reg;
   binui_init(&reg);
 
+  push_color(&reg, 1);
+  push_color(&reg, 2);
+  push_color(&reg, 3);
+  printf("Color: %u\n", get_color(&reg));
+  printf("Color: %u\n", pop_color(&reg));
+  printf("Color: %u\n", pop_color(&reg));
+  printf("Color: %u\n", pop_color(&reg));
+  int x, y;
+  position_push(&reg, 1, 1);
+  position_get(&reg, &x, &y);
+  printf(" %i %i\n", x, y);
+  position_push(&reg, 2, 2);
+  position_push(&reg, 3, 3);
+
+  position_get(&reg, &x, &y);
+  printf(" %i %i\n", x, y);
+  ASSERT(x == 6 && y == 6);
+  position_pop(&reg);
+  position_get(&reg, &x, &y);
+  ASSERT(x == 3 && y == 3);
+  position_pop(&reg);
+  position_pop(&reg);
+
+  
   io_writer _wd = {0};
   io_writer * wd = &_wd;
   binui_test_load(wd);

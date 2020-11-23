@@ -68,7 +68,7 @@ void continue_init_load(){
 void binui_test();
 
 int main(){
-  //binui_test();
+  binui_test();
   //return 0;
   
   logd_enable = true;

@@ -7,6 +7,7 @@ typedef struct {
   u64 reg_cap;
 
   bool lisp;
+  bool debug;
 
 }binui_context;
 

@@ -37,33 +37,9 @@ const int BINUI_MAGIC = 0x5a;
 
 // registers
 
-static u32 current_width, current_height;
-
-
-void binui_get_size(binui_context * ctx, u32 * w, u32 * h){
-  *w = current_width;
-  *h = current_height;
-}
-
-
-
 void (* rectangle_handle)(void * userdata);
 const int BINUI_MAX_STACK_SIZE = 1024;
 
-typedef struct{
-  union{
-    struct{
-      u32 w, h;
-    }size;
-    struct{
-      u32 x, y;
-    }pos;
-
-
-    void * user_data_ptr;
-  };
-
-}data_struct;
 
 typedef struct{
   void * elements;
@@ -101,10 +77,8 @@ typedef struct {
 void * binui_get_register(binui_context * ctx, binui_register * registerID){
   static u32 register_counter = 1;
   if(registerID->id == 0){
-
     registerID->id = register_counter;
     register_counter += registerID->size;
-
   }
   
   while(registerID->id + registerID->size >= ctx->reg_cap){
@@ -114,6 +88,10 @@ void * binui_get_register(binui_context * ctx, binui_register * registerID){
     memset(ctx->registers + ctx->reg_cap, 0, new_size - ctx->reg_cap);
     ctx->reg_cap = new_size;
   }
+
+  // this assert is for catching possibily errors early. New registers should not be created very often.
+  // in the future remove this.
+  ASSERT(ctx->reg_cap < 10000); 
   return ctx->registers + registerID->id;
 }
 
@@ -130,11 +108,13 @@ void binui_stack_register_push(binui_context * ctx, binui_stack_register * reg, 
 }
 
 void binui_stack_register_pop(binui_context * ctx, binui_stack_register * reg, void * value){
+  reg->stack.size = sizeof(stack);
   stack * stk = binui_get_register(ctx, &reg->stack);
   stack_pop(stk, value, reg->size);
 }
 
 bool binui_stack_register_top(binui_context * ctx, binui_stack_register * reg, void * value){
+  reg->stack.size = sizeof(stack);
   stack * stk = binui_get_register(ctx, &reg->stack);
   if(stk->count == 0) return false;
   stack_top(stk, value, reg->size);
@@ -180,8 +160,6 @@ typedef struct{
 
 binui_stack_register position_reg = {.size = sizeof(posi), .stack = {0}};
 
- 
-
 void position_get(binui_context * ctx, i32 * x, i32 * y){
   posi pos = {0};
   
@@ -223,23 +201,65 @@ void position_exit(binui_context * ctx){
   position_pop(ctx);
 }
 
+binui_stack_register size_reg = {.size = sizeof(posi), .stack = {0}};
+
+void size_get(binui_context * ctx, int * x, int * y){
+  posi size = {0};
+  binui_stack_register_top(ctx, &size_reg, &size);
+  *x = size.x;
+  *y = size.y;
+}
+
+void size_push(binui_context * ctx, int x, int y){
+  posi size = {.x = x, .y = y};
+  binui_stack_register_push(ctx, &size_reg, &size);
+}
+
+void size_pop(binui_context * ctx){
+  binui_stack_register_pop(ctx, &size_reg, NULL);
+}
+
+void size_enter(binui_context * ctx, io_reader * reader){
+  i32 x  = io_read_i32_leb(reader);
+  i32 y  = io_read_i32_leb(reader);
+  if(ctx->lisp)
+    printf("size %i %i\n", x, y);
+  size_push(ctx, x, y);
+}
+
+void size_exit(binui_context * ctx){
+  size_pop(ctx);
+}
+
+void binui_get_size(binui_context * ctx, u32 * w, u32 * h){
+  int _w = 0, _h = 0;
+  size_get(ctx, &_w, &_h);
+  *w = _w;
+  *h = _h;
+}
+
+void module_enter(binui_context * ctx, io_reader *reader){
+  u32 len = 0;
+  char * name = io_read_strn(reader, &len);
+  if(ctx->lisp)
+    printf("import '%s'", name);
+  if(ctx->debug) printf("Load module '%s'\n", name);
+}
+
+void rectangle_enter(binui_context * ctx, io_reader * reader){
+  if(ctx->lisp) printf("rect");
+}
+
+void canvas_enter(binui_context * ctx, io_reader * reader){
+  if(ctx->lisp)
+    printf("canvas");
+}
 
 
 void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* callback)(binui_context *registers, void * userdata), void * userdata){
 
-  const bool debug = false;
-  const bool lisp = false;
-  
-  void revert_size(void * userdata){
-    
-    data_struct ds;
-    ds.user_data_ptr = userdata;
-    if(debug)
-      printf(":: SIZE: %i %i     %i %i\n", current_width, current_height, ds.size.w, ds.size.h);
-    current_width = ds.size.w;
-    current_height = ds.size.h;
-  }
-
+  bool debug = reg->debug;
+  bool lisp = reg->lisp;
   
   int stack_level = 0;
   u32 childs[BINUI_MAX_STACK_SIZE];
@@ -251,6 +271,9 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* cal
     u32 children = 0;
     if(debug)
       printf("opcode: %i\n", opcode);
+    userdatas[stack_level] = NULL;
+    callbacks[stack_level] = NULL;
+    
     if(opcode == BINUI_OPCODE_NONE)
       break;
     if(lisp){
@@ -259,20 +282,14 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* cal
     printf("(");
     }
     if(opcode == BINUI_IMPORT_MODULE){
-      
-      u32 len = 0;
-      char * name = io_read_strn(reader, &len);
-      if(lisp)
-	printf("import '%s'", name);
-      if(debug) printf("Load module '%s'\n", name);
+      module_enter(reg, reader);
     }
-    userdatas[stack_level] = NULL;
-    callbacks[stack_level] = NULL;
+
     if(opcode == BINUI_CANVAS){
       // this does nothing.
       // canvas has no special meaning
-      if(lisp)
-	printf("canvas");
+      canvas_enter(reg, reader);
+
       children = io_read_u64_leb(reader);
     }
     
@@ -291,30 +308,24 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* cal
     }
 
     if(opcode == BINUI_SIZE){
-      u32 w  = io_read_i32_leb(reader);
-      u32 h  = io_read_i32_leb(reader);
-      data_struct ds;
-      ds.size.w = current_width;
-      ds.size.h = current_height;
-      current_width = w;
-      current_height = h;
+      size_enter(reg, reader);
       children = io_read_u64_leb(reader);
-
-      callbacks[stack_level] = revert_size;
-      userdatas[stack_level] = ds.user_data_ptr;
-      if(lisp)
-      printf("size %i %i ", w, h);
+      userdatas[stack_level] = reg;
+      callbacks[stack_level] = size_exit;
     }
     
     if(opcode == BINUI_RECTANGLE){
-      if(lisp) printf("rect");
+      rectangle_enter(reg, reader);
+
       if(rectangle_handle != NULL){
 	rectangle_handle(userdata);
       }
       if(debug){
 	i32 x, y;
 	position_get(reg, &x, &y);
-	printf("paint: Rectangle %p (%i %i) (%i %i)\n", get_color(reg), current_width, current_height, x, y);
+	int w, h;
+	size_get(reg, &w, &h);
+	printf("paint: Rectangle %p (%i %i) (%i %i)\n", get_color(reg), w, h, x, y);
       }
     }
 
@@ -456,7 +467,7 @@ void binui_test(){
   
   binui_context reg;
   binui_init(&reg);
-
+  //reg.debug = true;
   push_color(&reg, 1);
   push_color(&reg, 2);
   push_color(&reg, 3);
@@ -480,6 +491,14 @@ void binui_test(){
   position_pop(&reg);
   position_pop(&reg);
 
+  size_push(&reg, 1, 1);
+  size_push(&reg, 2, 2);
+  size_get(&reg, &x, &y);
+  ASSERT(x == 2 && y == 2);
+  size_pop(&reg);
+  size_get(&reg, &x, &y);
+  ASSERT(x == 1 && y == 1);
+  
   
   io_writer _wd = {0};
   io_writer * wd = &_wd;

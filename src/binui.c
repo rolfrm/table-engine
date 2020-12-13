@@ -6,7 +6,6 @@
 #include "binui.h"
 extern io_writer * binui_stdout;
 
-
 io_writer * binui_stdout;
 
 void binui_types_add(binui_types * types, u8 type, u8 opcode_size){
@@ -33,6 +32,9 @@ const int BINUI_RECTANGLE = 3;
 const int BINUI_POSITION = 4;
 const int BINUI_SIZE = 5;
 const int BINUI_COLOR = 6;
+const int BINUI_3D = 7;
+const int BINUI_3D_TRANSFORM = 8;
+const int BINUI_3D_POLYGON = 9;
 const int BINUI_MAGIC = 0x5a;
 
 // registers
@@ -68,12 +70,6 @@ void stack_top(stack * stk, void * data, size_t count){
   memcpy(data, stk->elements + stk->count - count, count);
 }
 
-
-typedef struct {
-  u32 size;
-  u32 id;
-}binui_register;
-
 void * binui_get_register(binui_context * ctx, binui_register * registerID){
   static u32 register_counter = 1;
   if(registerID->id == 0){
@@ -94,11 +90,6 @@ void * binui_get_register(binui_context * ctx, binui_register * registerID){
   ASSERT(ctx->reg_cap < 10000); 
   return ctx->registers + registerID->id;
 }
-
-typedef struct {
-  u32 size;
-  binui_register stack;
-}binui_stack_register;
 
 
 void binui_stack_register_push(binui_context * ctx, binui_stack_register * reg, void * value){

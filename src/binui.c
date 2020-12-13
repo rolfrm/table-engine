@@ -21,13 +21,8 @@ void memset(void *, int chr, unsigned long );
 
 io_writer * binui_stdout;
 
-
-
 const u8 BINUI_OPCODE_VLEN = 255;
 
-void binui_init(binui_context * ctx){
-  memset(ctx, 0, sizeof(ctx[0]));
-}
 
 void binui_load(binui_context * ctx, io_reader * rd){
 
@@ -233,6 +228,19 @@ void module_enter(binui_context * ctx, io_reader *reader){
 }
 
 void rectangle_enter(binui_context * ctx, io_reader * reader){
+  var cb = render_callback_get(ctx);
+  
+  if(cb.callback != NULL){
+    cb.callback(cb.userdata);
+  }
+  if(ctx->debug){
+    i32 x, y;
+    position_get(ctx, &x, &y);
+    int w, h;
+    size_get(ctx, &w, &h);
+    logd("paint: Rectangle %p (%i %i) (%i %i)\n", get_color(ctx), w, h, x, y);
+  }
+  
   UNUSED(reader);
   if(ctx->lisp) logd("rect");
 }
@@ -243,6 +251,17 @@ void canvas_enter(binui_context * ctx, io_reader * reader){
     logd("canvas");
 }
 
+void binui_set_opcode_handler(int opcode, binui_context * ctx, binui_opcode_handler handler){
+  if(ctx->opcode_handler_count <= opcode){
+    ctx->opcode_handlers = realloc(ctx->opcode_handlers, sizeof(handler) * (opcode + 1));
+    
+    for(int i = ctx->opcode_handler_count; i <= opcode; i++){
+      ctx->opcode_handlers[i] = (binui_opcode_handler){0};
+    }
+    ctx->opcode_handler_count = opcode + 1;
+  }
+  ctx->opcode_handlers[opcode] = handler;
+}
 
 binui_stack_register render_callback_reg = {.size = sizeof(render_callback), .stack = {0}};
 
@@ -261,6 +280,7 @@ render_callback render_callback_get(binui_context * ctx){
 }
 
 void binui_iterate_internal(binui_context * reg, io_reader * reader){
+  ASSERT(reg->inited == true);
   bool debug = reg->debug;
   bool lisp = reg->lisp;
   
@@ -286,51 +306,19 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
       module_enter(reg, reader);
     }
 
-    if(opcode == BINUI_CANVAS){
-      // this does nothing.
-      // canvas has no special meaning
-      canvas_enter(reg, reader);
-
-      children = io_read_u64_leb(reader);
-    }
-    
-    if(opcode == BINUI_COLOR){
-      color_enter(reg, reader);
-      children = io_read_u64_leb(reader);
-      callbacks[stack_level] = color_exit;  
-    }
-
-    if(opcode == BINUI_POSITION){
-      position_enter(reg, reader);
-      children = io_read_u64_leb(reader);
-      callbacks[stack_level] = position_exit;
-    }
-
-    if(opcode == BINUI_SIZE){
-      size_enter(reg, reader);
-      children = io_read_u64_leb(reader);
-      callbacks[stack_level] = size_exit;
-    }
-    
-    if(opcode == BINUI_RECTANGLE){
-      rectangle_enter(reg, reader);
-      var cb = render_callback_get(reg);
-      
-      if(cb.callback != NULL){
-	cb.callback(cb.userdata);
-      }
-      if(debug){
-	i32 x, y;
-	position_get(reg, &x, &y);
-	int w, h;
-	size_get(reg, &w, &h);
-	logd("paint: Rectangle %p (%i %i) (%i %i)\n", get_color(reg), w, h, x, y);
+    if(reg->opcode_handler_count > opcode){
+      var handler = reg->opcode_handlers[opcode];
+      if(handler.enter != NULL){
+	handler.enter(reg, reader);
+	if(handler.has_children)
+	  children = io_read_u64_leb(reader);
+	callbacks[stack_level] = handler.exit;
       }
     }
-
+    
     opcode = io_read_u64_leb(reader);
     if(opcode != BINUI_MAGIC){
-      logd("ERROR Expected magic!\n");
+      logd("ERROR Expected magic! %i\n", opcode);
       break;
     }
     
@@ -360,6 +348,36 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
     if(lisp)
       logd("\n");
   }
+}
+
+
+void binui_init(binui_context * ctx){
+  memset(ctx, 0, sizeof(ctx[0]));
+  ctx->inited = true;
+
+  binui_opcode_handler h;
+  h.enter = color_enter;
+  h.exit = color_exit;
+  h.has_children = true;
+  binui_set_opcode_handler(BINUI_COLOR, ctx, h);
+
+  h.enter = size_enter;
+  h.exit = size_exit;
+  binui_set_opcode_handler(BINUI_SIZE, ctx, h);
+
+  h.enter = position_enter;
+  h.exit = position_exit;
+  binui_set_opcode_handler(BINUI_POSITION, ctx, h);
+
+  h.enter = canvas_enter;
+  h.exit = NULL;
+  binui_set_opcode_handler(BINUI_CANVAS, ctx, h);
+
+  h.enter = rectangle_enter;
+  h.has_children = false;
+  binui_set_opcode_handler(BINUI_RECTANGLE, ctx, h);
+  
+  
 }
 
 void handle_opcode(binui_context * registers, void * userdata){

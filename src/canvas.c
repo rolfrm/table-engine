@@ -65,6 +65,8 @@ canvas_context * canvas_get_context(u64 canvas){
   u64 ptr;
   if(!u64_table_try_get(canvas_contexts, &canvas, &ptr)){
     canvas_context * ctx = alloc0(sizeof(canvas_context));
+    binui_init(&ctx->binui);
+ 
     binui_test_load(&ctx->wd);
     
     ctx->blit3d  = blit3d_context_new();

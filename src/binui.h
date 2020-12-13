@@ -1,3 +1,20 @@
+
+typedef enum{
+	     BINUI_OPCODE_NONE = 0,
+	     BINUI_IMPORT_MODULE = 1,
+	     BINUI_CANVAS = 2,
+	     BINUI_RECTANGLE = 3,
+	     BINUI_POSITION = 4,
+	     BINUI_SIZE = 5,
+	     BINUI_COLOR = 6,
+	     BINUI_3D = 7,
+	     BINUI_3D_TRANSFORM = 8,
+	     BINUI_3D_POLYGON = 9,
+	     BINUI_MAGIC = 0x5a,
+}binui_opcode;
+
+
+
 typedef struct _binui_context binui_context;
 
 typedef struct{
@@ -19,7 +36,7 @@ struct _binui_context {
 
   bool lisp;
   bool debug;
-
+  binui_opcode current_opcode;
 };
 
 typedef struct {
@@ -57,18 +74,7 @@ typedef struct{
 void render_callback_push(binui_context * ctx, render_callback callback);
 render_callback render_callback_get(binui_context * ctx);
 void render_callback_pop(binui_context * ctx);
+void binui_3d_init(binui_context * ctx);
 
-
-typedef enum{
-	     BINUI_OPCODE_NONE = 0,
-	     BINUI_IMPORT_MODULE = 1,
-	     BINUI_CANVAS = 2,
-	     BINUI_RECTANGLE = 3,
-	     BINUI_POSITION = 4,
-	     BINUI_SIZE = 5,
-	     BINUI_COLOR = 6,
-	     BINUI_3D = 7,
-	     BINUI_3D_TRANSFORM = 8,
-	     BINUI_3D_POLYGON = 9,
-	     BINUI_MAGIC = 0x5a,
-}binui_opcode;
+mat4 io_read_mat4(io_reader * rd);
+void io_write_mat4(io_writer * wd, mat4 m);

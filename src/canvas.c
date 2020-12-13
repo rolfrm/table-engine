@@ -80,6 +80,7 @@ canvas_context * canvas_get_context(u64 canvas){
 static void blit_rectangle3(void * userdata){
   var ctx = (canvas_context *) userdata;
   if(ctx == NULL) return;
+  if(ctx->binui.current_opcode != BINUI_RECTANGLE) return;
   int x, y;
   u32 w, h;
   u32 color;

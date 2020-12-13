@@ -8,6 +8,7 @@
 #include <iron/utils.h>
 #include <iron/log.h>
 #include <iron/mem.h>
+#include <iron/linmath.h>
 #include <microio.h>
 
 #include "binui.h"
@@ -57,6 +58,7 @@ void stack_pop(stack * stk, void * data, size_t count){
 }
 
 void stack_top(stack * stk, void * data, size_t count){
+  
   memcpy(data, stk->elements + stk->count - count, count);
 }
 
@@ -98,7 +100,8 @@ bool binui_stack_register_top(binui_context * ctx, binui_stack_register * reg, v
   reg->stack.size = sizeof(stack);
   stack * stk = binui_get_register(ctx, &reg->stack);
   if(stk->count == 0) return false;
-  stack_top(stk, value, reg->size);
+  if(value != NULL)
+    stack_top(stk, value, reg->size);
   return true;
 }
 
@@ -290,6 +293,7 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
   
   while(true){
     u64 opcode = io_read_u64_leb(reader);
+    reg->current_opcode = opcode;
     u32 children = 0;
     if(debug)
       logd("opcode: %i\n", opcode);
@@ -315,6 +319,13 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
 	callbacks[stack_level] = handler.exit;
       }
     }
+
+    //if(children == 0){
+      var cb = render_callback_get(reg);
+      if(cb.callback != NULL){
+	cb.callback(cb.userdata);
+      }
+      //}
     
     opcode = io_read_u64_leb(reader);
     if(opcode != BINUI_MAGIC){
@@ -350,7 +361,7 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
   }
 }
 
-
+void binui_3d_init(binui_context * ctx);
 void binui_init(binui_context * ctx){
   memset(ctx, 0, sizeof(ctx[0]));
   ctx->inited = true;
@@ -376,7 +387,7 @@ void binui_init(binui_context * ctx){
   h.enter = rectangle_enter;
   h.has_children = false;
   binui_set_opcode_handler(BINUI_RECTANGLE, ctx, h);
-  
+  binui_3d_init(ctx);  
   
 }
 
@@ -460,13 +471,32 @@ void binui_test_load(io_writer * wd){
   io_write_u32_leb(wd, BINUI_POSITION);
   io_write_i32_leb(wd, 15);
   io_write_i32_leb(wd, 15);
-  io_write_u32_leb(wd, 1);
+  io_write_u32_leb(wd, 2);
   io_write_u32_leb(wd, BINUI_MAGIC);
   
   io_write_u32_leb(wd, BINUI_RECTANGLE);
   io_write_u32_leb(wd, BINUI_MAGIC);
 
+  io_write_u32_leb(wd, BINUI_3D);
+  
+  io_write_u32_leb(wd, 1);
+  io_write_u32_leb(wd, BINUI_MAGIC);
 
+  io_write_u32_leb(wd, BINUI_3D_TRANSFORM);
+
+  mat4 t = mat4_translate(1,1,1);
+  io_write_mat4(wd, t);
+  io_write_u32_leb(wd, 1);
+  io_write_u32_leb(wd, BINUI_MAGIC);
+  
+  io_write_u32_leb(wd, BINUI_3D_POLYGON);
+  io_write_u32_leb(wd, 4); // vertexes
+  io_write_u32_leb(wd, 2); // vertex dimensions
+  float pts[8] = {0,0,1,0,1,1,0,1};
+  io_write(wd, pts, 8 * sizeof(pts[0]));
+  
+  io_write_u32_leb(wd, BINUI_MAGIC);
+  
   io_write_u32_leb(wd, BINUI_RECTANGLE);
   io_write_u32_leb(wd, BINUI_MAGIC);
   

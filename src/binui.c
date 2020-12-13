@@ -1,45 +1,40 @@
-#include <iron/full.h>
-#include<microio.h>
+//#include <iron/full.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <string.h>
+#include <stdlib.h>
+#include <iron/types.h>
+#include <iron/utils.h>
+#include <iron/log.h>
+#include <iron/mem.h>
+#include <microio.h>
 
-#include "binui_types.h"
-#include "binui_types.c"
 #include "binui.h"
 extern io_writer * binui_stdout;
 
+#ifdef NO_STDLIB
+void  memcpy(void *, const void *, unsigned long);
+void * realloc(void *, unsigned long);
+void memset(void *, int chr, unsigned long );
+#endif
+
 io_writer * binui_stdout;
 
-void binui_types_add(binui_types * types, u8 type, u8 opcode_size){
 
-}
 
 const u8 BINUI_OPCODE_VLEN = 255;
 
 void binui_init(binui_context * ctx){
   memset(ctx, 0, sizeof(ctx[0]));
-  ctx->type_table = binui_types_create(NULL);
-  binui_types_add(ctx->type_table, 0, 0);
-  binui_types_add(ctx->type_table, 0, BINUI_OPCODE_VLEN);
 }
 
 void binui_load(binui_context * ctx, io_reader * rd){
 
 }
 
-const int BINUI_OPCODE_NONE = 0;
-const int BINUI_IMPORT_MODULE = 1;
-const int BINUI_CANVAS = 2;
-const int BINUI_RECTANGLE = 3;
-const int BINUI_POSITION = 4;
-const int BINUI_SIZE = 5;
-const int BINUI_COLOR = 6;
-const int BINUI_3D = 7;
-const int BINUI_3D_TRANSFORM = 8;
-const int BINUI_3D_POLYGON = 9;
-const int BINUI_MAGIC = 0x5a;
 
 // registers
-
-void (* rectangle_handle)(void * userdata);
 const int BINUI_MAX_STACK_SIZE = 1024;
 
 
@@ -137,7 +132,7 @@ void color_enter(binui_context * ctx, io_reader * reader){
   u32 color = io_read_u32(reader);
   push_color(ctx, color);
   if(ctx->lisp)
-    printf("color %p", color);  
+    logd("color %p", color);  
 }
 
 void color_exit(binui_context * ctx){
@@ -184,7 +179,7 @@ void position_enter(binui_context * ctx, io_reader * reader){
   i32 x  = io_read_i32_leb(reader);
   i32 y  = io_read_i32_leb(reader);
   if(ctx->lisp)
-    printf("translate %i %i", x, y);
+    logd("translate %i %i", x, y);
   position_push(ctx, x, y);
 }
 
@@ -214,7 +209,7 @@ void size_enter(binui_context * ctx, io_reader * reader){
   i32 x  = io_read_i32_leb(reader);
   i32 y  = io_read_i32_leb(reader);
   if(ctx->lisp)
-    printf("size %i %i\n", x, y);
+    logd("size %i %i\n", x, y);
   size_push(ctx, x, y);
 }
 
@@ -233,44 +228,59 @@ void module_enter(binui_context * ctx, io_reader *reader){
   u32 len = 0;
   char * name = io_read_strn(reader, &len);
   if(ctx->lisp)
-    printf("import '%s'", name);
-  if(ctx->debug) printf("Load module '%s'\n", name);
+    logd("import '%s'", name);
+  if(ctx->debug) logd("Load module '%s'\n", name);
 }
 
 void rectangle_enter(binui_context * ctx, io_reader * reader){
-  if(ctx->lisp) printf("rect");
+  UNUSED(reader);
+  if(ctx->lisp) logd("rect");
 }
 
 void canvas_enter(binui_context * ctx, io_reader * reader){
+  UNUSED(reader);
   if(ctx->lisp)
-    printf("canvas");
+    logd("canvas");
 }
 
 
-void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* callback)(binui_context *registers, void * userdata), void * userdata){
+binui_stack_register render_callback_reg = {.size = sizeof(render_callback), .stack = {0}};
 
+void render_callback_push(binui_context * ctx, render_callback callback){
+  binui_stack_register_push(ctx, &render_callback_reg, &callback);
+}
+
+void render_callback_pop(binui_context * ctx){
+  binui_stack_register_pop(ctx, &render_callback_reg, NULL);
+}
+
+render_callback render_callback_get(binui_context * ctx){
+  render_callback callback = {0};
+  binui_stack_register_top(ctx, &render_callback_reg, &callback);
+  return callback;
+}
+
+void binui_iterate_internal(binui_context * reg, io_reader * reader){
   bool debug = reg->debug;
   bool lisp = reg->lisp;
   
   int stack_level = 0;
   u32 childs[BINUI_MAX_STACK_SIZE];
-  void * userdatas[BINUI_MAX_STACK_SIZE];
-  void (* callbacks[BINUI_MAX_STACK_SIZE])(void * userdata);
+  void (* callbacks[BINUI_MAX_STACK_SIZE])(binui_context * userdata);
   
   while(true){
     u64 opcode = io_read_u64_leb(reader);
     u32 children = 0;
     if(debug)
-      printf("opcode: %i\n", opcode);
-    userdatas[stack_level] = NULL;
+      logd("opcode: %i\n", opcode);
     callbacks[stack_level] = NULL;
     
     if(opcode == BINUI_OPCODE_NONE)
       break;
     if(lisp){
     for(int i = 0; i < stack_level; i++)
-      printf(" ");
-    printf("(");
+      logd(" ");
+    logd("(");
     }
     if(opcode == BINUI_IMPORT_MODULE){
       module_enter(reg, reader);
@@ -287,49 +297,47 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* cal
     if(opcode == BINUI_COLOR){
       color_enter(reg, reader);
       children = io_read_u64_leb(reader);
-      userdatas[stack_level] = reg;
       callbacks[stack_level] = color_exit;  
     }
 
     if(opcode == BINUI_POSITION){
       position_enter(reg, reader);
       children = io_read_u64_leb(reader);
-      userdatas[stack_level] = reg;      
       callbacks[stack_level] = position_exit;
     }
 
     if(opcode == BINUI_SIZE){
       size_enter(reg, reader);
       children = io_read_u64_leb(reader);
-      userdatas[stack_level] = reg;
       callbacks[stack_level] = size_exit;
     }
     
     if(opcode == BINUI_RECTANGLE){
       rectangle_enter(reg, reader);
-
-      if(rectangle_handle != NULL){
-	rectangle_handle(userdata);
+      var cb = render_callback_get(reg);
+      
+      if(cb.callback != NULL){
+	cb.callback(cb.userdata);
       }
       if(debug){
 	i32 x, y;
 	position_get(reg, &x, &y);
 	int w, h;
 	size_get(reg, &w, &h);
-	printf("paint: Rectangle %p (%i %i) (%i %i)\n", get_color(reg), w, h, x, y);
+	logd("paint: Rectangle %p (%i %i) (%i %i)\n", get_color(reg), w, h, x, y);
       }
     }
 
     opcode = io_read_u64_leb(reader);
     if(opcode != BINUI_MAGIC){
-      printf("ERROR Expected magic!\n");
+      logd("ERROR Expected magic!\n");
       break;
     }
     
     // if children >
     while(true){
       if(debug)
-	printf("Children: %i stack level: %i\n", children, stack_level);
+	logd("Children: %i stack level: %i\n", children, stack_level);
       if(children >= 1){
 	childs[stack_level] = children;
 	stack_level += 1;
@@ -337,30 +345,30 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader, void (* cal
       }else if(stack_level > 0){
 	var pop = callbacks[stack_level];
 	if(pop != NULL)
-	  pop(userdatas[stack_level]);
+	  pop(reg);
 	 
 	stack_level -= 1;
 	children = childs[stack_level] -= 1;
 	if(lisp)
-	  printf(")");
+	  logd(")");
       }else{
 	if(lisp)
-	  printf(")");
+	  logd(")");
 	break;
       }
     }
     if(lisp)
-      printf("\n");
+      logd("\n");
   }
 }
 
 void handle_opcode(binui_context * registers, void * userdata){
-
+  UNUSED(registers);
+  UNUSED(userdata);
 }
 
-void binui_iterate(binui_context * reg, io_reader * reader, void (* callback)(binui_context * registers, void * userdata), void * userdata){
-
-  binui_iterate_internal(reg, reader, callback, userdata);
+void binui_iterate(binui_context * reg, io_reader * reader){
+  binui_iterate_internal(reg, reader);
 }
 
 void binui_test_load(io_writer * wd){
@@ -462,19 +470,19 @@ void binui_test(){
   push_color(&reg, 1);
   push_color(&reg, 2);
   push_color(&reg, 3);
-  printf("Color: %u\n", get_color(&reg));
-  printf("Color: %u\n", pop_color(&reg));
-  printf("Color: %u\n", pop_color(&reg));
-  printf("Color: %u\n", pop_color(&reg));
+  logd("Color: %u\n", get_color(&reg));
+  logd("Color: %u\n", pop_color(&reg));
+  logd("Color: %u\n", pop_color(&reg));
+  logd("Color: %u\n", pop_color(&reg));
   int x, y;
   position_push(&reg, 1, 1);
   position_get(&reg, &x, &y);
-  printf(" %i %i\n", x, y);
+  logd(" %i %i\n", x, y);
   position_push(&reg, 2, 2);
   position_push(&reg, 3, 3);
 
   position_get(&reg, &x, &y);
-  printf(" %i %i\n", x, y);
+  logd(" %i %i\n", x, y);
   ASSERT(x == 6 && y == 6);
   position_pop(&reg);
   position_get(&reg, &x, &y);
@@ -494,7 +502,7 @@ void binui_test(){
   io_writer _wd = {0};
   io_writer * wd = &_wd;
   binui_test_load(wd);
-    binui_iterate(&reg, wd, handle_opcode, NULL);
+  binui_iterate(&reg, wd);
   /*io_write_u8(wd, BINUI_SIZE);
   // 500x500
   io_write_u16(wd, 500);

@@ -129,8 +129,6 @@ void binui_get_color(binui_context * ctx, u32 *color){
 void color_enter(binui_context * ctx, io_reader * reader){
   u32 color = io_read_u32(reader);
   push_color(ctx, color);
-  if(ctx->lisp)
-    logd("color %p", color);  
 }
 
 void color_exit(binui_context * ctx){
@@ -176,8 +174,6 @@ void position_pop(binui_context * ctx){
 void position_enter(binui_context * ctx, io_reader * reader){
   i32 x  = io_read_i32_leb(reader);
   i32 y  = io_read_i32_leb(reader);
-  if(ctx->lisp)
-    logd("translate %i %i", x, y);
   position_push(ctx, x, y);
 }
 
@@ -206,8 +202,6 @@ void size_pop(binui_context * ctx){
 void size_enter(binui_context * ctx, io_reader * reader){
   i32 x  = io_read_i32_leb(reader);
   i32 y  = io_read_i32_leb(reader);
-  if(ctx->lisp)
-    logd("size %i %i\n", x, y);
   size_push(ctx, x, y);
 }
 
@@ -225,29 +219,15 @@ void binui_get_size(binui_context * ctx, u32 * w, u32 * h){
 void module_enter(binui_context * ctx, io_reader *reader){
   u32 len = 0;
   char * name = io_read_strn(reader, &len);
-  if(ctx->lisp)
-    logd("import '%s'", name);
-  if(ctx->debug) logd("Load module '%s'\n", name);
 }
 
 void rectangle_enter(binui_context * ctx, io_reader * reader){
   
-  if(ctx->debug){
-    i32 x, y;
-    position_get(ctx, &x, &y);
-    int w, h;
-    size_get(ctx, &w, &h);
-    logd("paint: Rectangle %p (%i %i) (%i %i)\n", get_color(ctx), w, h, x, y);
-  }
-  
   UNUSED(reader);
-  if(ctx->lisp) logd("rect");
 }
 
 void canvas_enter(binui_context * ctx, io_reader * reader){
   UNUSED(reader);
-  if(ctx->lisp)
-    logd("canvas");
 }
 
 void binui_set_opcode_handler(int opcode, binui_context * ctx, binui_opcode_handler handler){
@@ -262,19 +242,19 @@ void binui_set_opcode_handler(int opcode, binui_context * ctx, binui_opcode_hand
   ctx->opcode_handlers[opcode] = handler;
 }
 
-binui_stack_register render_callback_reg = {.size = sizeof(render_callback), .stack = {0}};
+binui_stack_register node_callback_reg = {.size = sizeof(node_callback), .stack = {0}};
 
-void render_callback_push(binui_context * ctx, render_callback callback){
-  binui_stack_register_push(ctx, &render_callback_reg, &callback);
+void node_callback_push(binui_context * ctx, node_callback callback){
+  binui_stack_register_push(ctx, &node_callback_reg, &callback);
 }
 
-void render_callback_pop(binui_context * ctx){
-  binui_stack_register_pop(ctx, &render_callback_reg, NULL);
+void node_callback_pop(binui_context * ctx){
+  binui_stack_register_pop(ctx, &node_callback_reg, NULL);
 }
 
-render_callback render_callback_get(binui_context * ctx){
-  render_callback callback = {0};
-  binui_stack_register_top(ctx, &render_callback_reg, &callback);
+node_callback node_callback_get(binui_context * ctx){
+  node_callback callback = {0};
+  binui_stack_register_top(ctx, &node_callback_reg, &callback);
   return callback;
 }
 
@@ -286,7 +266,6 @@ typedef struct{
 
 void binui_iterate_internal(binui_context * reg, io_reader * reader){
   ASSERT(reg->inited == true);
-  bool debug = reg->debug;
 
   stack_frame frames[BINUI_MAX_STACK_SIZE];
   stack_frame * frame = &frames[0];
@@ -295,9 +274,6 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
     *frame = (stack_frame){0};
     frame->node_id = reader->offset;
     reg->current_opcode = frame->opcode = io_read_u64_leb(reader);
-   
-    if(debug)
-      logd("opcode: %i\n", frame->opcode);
     
     if(frame->opcode == BINUI_OPCODE_NONE)
       break;
@@ -318,33 +294,32 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
       logd("ERROR Expected magic! got: %i\n", magic);
       break;
     }
-
-    var cb = render_callback_get(reg);
+    var cb = node_callback_get(reg);
+    
     if(cb.after_enter != NULL){
       cb.after_enter(cb.userdata);
     }
     
     // if children >
     while(true){
-      if(debug)
-	logd("Children: %i stack level: %i\n", frame->child_count, frame - frames);
-      if(frame->child_count >= 0){
+      if(frame->child_count > 0){
 	frame = frame + 1;
 	break;
-      }else if(frame != frames ){
+      }
+      else
+	{
 	var handler = reg->opcode_handlers[frame->opcode];
-	var cb = render_callback_get(reg);
+	var cb = node_callback_get(reg);
 	if(cb.before_exit != NULL){
 	  cb.before_exit(cb.userdata);
 	}
 	if(handler.exit != NULL){
 	  handler.exit(reg);
 	}
+	if(frame == &frames[0])
+	  break;
 	frame = frame - 1;
-	
-      }else{
-	// tree ended.
-	break;
+	frame->child_count -= 1;
       }
     }
   }
@@ -383,14 +358,26 @@ void binui_init(binui_context * ctx){
   h.has_children = false;
   binui_set_opcode_handler(BINUI_RECTANGLE, ctx, h);
 
-
-
-  binui_3d_init(ctx);
-
-    
-  
+  binui_3d_init(ctx);  
 }
 
+
+const char * binui_opcode_name(binui_opcode opcode){
+  switch(opcode)
+    {
+    case BINUI_OPCODE_NONE: return "none";
+    case BINUI_IMPORT_MODULE: return "import";
+    case BINUI_CANVAS: return "canvas";
+    case BINUI_RECTANGLE: return "rectangle";
+    case BINUI_POSITION: return "position";
+    case BINUI_SIZE: return "size";
+    case BINUI_COLOR: return "color";
+    case BINUI_3D: return "3d";
+    case BINUI_3D_TRANSFORM: return "transform";
+    case BINUI_3D_POLYGON: return "polygon";
+    case BINUI_MAGIC: ERROR("Invalid opcode"); return NULL;
+    }
+}
 void handle_opcode(binui_context * registers, void * userdata){
   UNUSED(registers);
   UNUSED(userdata);
@@ -504,7 +491,27 @@ void binui_test_load(io_writer * wd){
   io_reset(wd);
 }
 
+typedef struct{
+  binui_context * ctx;
+  int stack_level;
 
+}test_render_context;
+
+void test_after_enter(void * userdata){
+ test_render_context * ctx = userdata;
+ for(int i = 0; i < ctx->stack_level; i++)
+   logd(" ");
+  logd("(%s \n", binui_opcode_name(ctx->ctx->current_opcode));
+  ctx->stack_level += 1;
+}
+
+void test_before_exit(void * userdata){
+  test_render_context * ctx = userdata;
+  for(int i = 0; i < ctx->stack_level; i++)
+    logd(" ");
+  logd(")\n");
+  ctx->stack_level -= 1;
+}
 
 void binui_test(){
 
@@ -512,7 +519,13 @@ void binui_test(){
   
   binui_context reg;
   binui_init(&reg);
-  //reg.debug = true;
+  test_render_context rctx = {.ctx = &reg, .stack_level = 0};
+  
+  node_callback cb = {.after_enter = test_after_enter,
+			.before_exit = test_before_exit,
+			.userdata = &rctx};
+  
+  node_callback_push(&reg, cb);
   push_color(&reg, 1);
   push_color(&reg, 2);
   push_color(&reg, 3);

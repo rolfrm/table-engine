@@ -13,6 +13,8 @@ typedef enum{
 	     BINUI_MAGIC = 0x5a,
 }binui_opcode;
 
+const char * binui_opcode_name(binui_opcode);
+binui_opcode binui_opcode_parse(const char * name);
 
 
 typedef struct _binui_context binui_context;
@@ -34,8 +36,6 @@ struct _binui_context {
   
   int opcode_handler_count;
 
-  bool lisp;
-  bool debug;
   binui_opcode current_opcode;
 };
 
@@ -71,11 +71,11 @@ typedef struct{
   void (* before_exit)(void * userdata);
   
   void * userdata;
-}render_callback;
+}node_callback;
 
-void render_callback_push(binui_context * ctx, render_callback callback);
-render_callback render_callback_get(binui_context * ctx);
-void render_callback_pop(binui_context * ctx);
+void node_callback_push(binui_context * ctx, node_callback callback);
+node_callback node_callback_get(binui_context * ctx);
+void node_callback_pop(binui_context * ctx);
 void binui_3d_init(binui_context * ctx);
 
 mat4 io_read_mat4(io_reader * rd);

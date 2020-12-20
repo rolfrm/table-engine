@@ -144,20 +144,20 @@ void render_canvas(u64 canvas){
     mat4_rotate_3d_transform(0,0,0,0,0,0);
   }
 
-  render_callback render = {
+  node_callback render = {
     .after_enter = blit_rectangle3,
     .before_exit = NULL,
     .userdata = ctx
   };
 
-  render_callback_push(&ctx->binui, render);
+  node_callback_push(&ctx->binui, render);
   
   io_reset(&ctx->wd);
   blit_push();
   blit_begin(BLIT_MODE_PIXEL);
   binui_iterate(&ctx->binui, &ctx->wd);
   blit_pop();		
-  render_callback_pop(&ctx->binui);
+  node_callback_pop(&ctx->binui);
 }
 
 void canvas_init(){

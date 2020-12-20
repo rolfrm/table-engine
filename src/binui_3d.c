@@ -37,7 +37,8 @@ mat4 transform_3d_current(binui_context * ctx){
   return current;
 }
 
-binui_stack_register polygon_3d_register ={.size =sizeof(f32 *), .stack = {0}};
+
+binui_stack_register polygon_3d_register ={.size =sizeof(binui_polygon), .stack = {0}};
 
 void polygon_3d_enter(binui_context * ctx, io_reader * reader){
   i32 vert_cnt = io_read_i32_leb(reader);
@@ -45,15 +46,46 @@ void polygon_3d_enter(binui_context * ctx, io_reader * reader){
   i32 count = dim * vert_cnt;
   
   f32 * pts = alloc0(count * sizeof(pts[0]));
+
   io_read(reader, pts, count * sizeof(pts[0]));
-  binui_stack_register_push(ctx, &polygon_3d_register, &pts);  
+
+  binui_polygon d = {
+		     .data = pts,
+		     .dim = dim,
+		     .count = vert_cnt
+  };
+  logd("Loading a polygon of size %ix%i\n", vert_cnt, dim);
+  binui_stack_register_push(ctx, &polygon_3d_register, &d);  
+
 }
 
 void polygon_3d_exit(binui_context * ctx){
-  f32 * pts;
+  binui_polygon pts;
   binui_stack_register_pop(ctx, &polygon_3d_register, &pts);
-  dealloc(pts); 
+  dealloc(pts.data); 
 }
+
+/*
+binui_stack_register blit3d_context_reg = {.size = sizeof(blit3d_context *), .stack = {0}};
+
+
+
+blit3d_context * blit3d_getctx(binui_context * ctx){
+  blit3d_context * ptr = NULL;
+  if(binui_stack_register_top(ctx, &blit3d_context_reg, &ptr)){
+    return ptr;
+  }
+  ptr = blit3d_context_new();
+  / binui_stack_register_push(ctx, &blit3d_context_reg, &ptr);
+  return ptr;
+}
+*/
+
+binui_polygon binui_polygon_get(binui_context * ctx){
+  binui_polygon pts = {0};
+  binui_stack_register_top(ctx, &polygon_3d_register, &pts);
+  return pts;
+  }
 
 binui_stack_register blit3d_entered ={.size =sizeof(bool), .stack = {0}};
 
@@ -63,11 +95,15 @@ void blit_3d_enter(binui_context * ctx, io_reader * reader){
     ERROR("Blit 3D already active");
   }
   binui_stack_register_push(ctx, &blit3d_entered, &val);
+
+  //blit3d_context * b = blit3d_getctx(ctx);
+  //blit3d_context_load(b);
 }
 
 void blit_3d_exit(binui_context * ctx){
 
   binui_stack_register_pop(ctx, &blit3d_entered, NULL);
+  //blit_begin(BLIT_MODE_PIXEL);
 }
 
 

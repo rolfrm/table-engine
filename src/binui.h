@@ -21,7 +21,7 @@ typedef struct{
   void (* enter) (binui_context * ctx, io_reader * reader);
   void (* exit) (binui_context * ctx);
   bool has_children;
-
+  
 }binui_opcode_handler;
 
 struct _binui_context {
@@ -30,8 +30,8 @@ struct _binui_context {
   u64 reg_ptr;
   u64 reg_cap;
 
-
   binui_opcode_handler * opcode_handlers;
+  
   int opcode_handler_count;
 
   bool lisp;
@@ -67,7 +67,9 @@ void binui_get_color(binui_context * reg, u32 * color);
 
 typedef struct{
   
-  void (* callback)(void * userdata);
+  void (* after_enter)(void * userdata);
+  void (* before_exit)(void * userdata);
+  
   void * userdata;
 }render_callback;
 
@@ -78,3 +80,13 @@ void binui_3d_init(binui_context * ctx);
 
 mat4 io_read_mat4(io_reader * rd);
 void io_write_mat4(io_writer * wd, mat4 m);
+
+
+typedef struct{
+  u32 count;
+  u32 dim;
+  f32 * data;
+  
+}binui_polygon;
+
+binui_polygon binui_polygon_get(binui_context * ctx);

@@ -231,11 +231,7 @@ void module_enter(binui_context * ctx, io_reader *reader){
 }
 
 void rectangle_enter(binui_context * ctx, io_reader * reader){
-  var cb = render_callback_get(ctx);
   
-  if(cb.callback != NULL){
-    cb.callback(cb.userdata);
-  }
   if(ctx->debug){
     i32 x, y;
     position_get(ctx, &x, &y);
@@ -282,82 +278,75 @@ render_callback render_callback_get(binui_context * ctx){
   return callback;
 }
 
+typedef struct{
+  u32 opcode;
+  u32 child_count;
+  u64 node_id;
+}stack_frame;
+
 void binui_iterate_internal(binui_context * reg, io_reader * reader){
   ASSERT(reg->inited == true);
   bool debug = reg->debug;
-  bool lisp = reg->lisp;
-  
-  int stack_level = 0;
-  u32 childs[BINUI_MAX_STACK_SIZE];
-  void (* callbacks[BINUI_MAX_STACK_SIZE])(binui_context * userdata);
-  
-  while(true){
-    u64 opcode = io_read_u64_leb(reader);
-    reg->current_opcode = opcode;
-    u32 children = 0;
-    if(debug)
-      logd("opcode: %i\n", opcode);
-    callbacks[stack_level] = NULL;
-    
-    if(opcode == BINUI_OPCODE_NONE)
-      break;
-    if(lisp){
-    for(int i = 0; i < stack_level; i++)
-      logd(" ");
-    logd("(");
-    }
-    if(opcode == BINUI_IMPORT_MODULE){
-      module_enter(reg, reader);
-    }
 
-    if(reg->opcode_handler_count > opcode){
-      var handler = reg->opcode_handlers[opcode];
+  stack_frame frames[BINUI_MAX_STACK_SIZE];
+  stack_frame * frame = &frames[0];
+    
+  while(true){
+    *frame = (stack_frame){0};
+    frame->node_id = reader->offset;
+    reg->current_opcode = frame->opcode = io_read_u64_leb(reader);
+   
+    if(debug)
+      logd("opcode: %i\n", frame->opcode);
+    
+    if(frame->opcode == BINUI_OPCODE_NONE)
+      break;
+    
+    if(reg->opcode_handler_count > frame->opcode){
+      var handler = reg->opcode_handlers[frame->opcode];
       if(handler.enter != NULL){
 	handler.enter(reg, reader);
 	if(handler.has_children)
-	  children = io_read_u64_leb(reader);
-	callbacks[stack_level] = handler.exit;
+	  frame->child_count = io_read_u64_leb(reader);
       }
+    }else{
+      ERROR("No handler for opcode!");
+    }
+    
+    var magic = io_read_u64_leb(reader);
+    if(magic != BINUI_MAGIC){
+      logd("ERROR Expected magic! got: %i\n", magic);
+      break;
     }
 
-    //if(children == 0){
-      var cb = render_callback_get(reg);
-      if(cb.callback != NULL){
-	cb.callback(cb.userdata);
-      }
-      //}
-    
-    opcode = io_read_u64_leb(reader);
-    if(opcode != BINUI_MAGIC){
-      logd("ERROR Expected magic! %i\n", opcode);
-      break;
+    var cb = render_callback_get(reg);
+    if(cb.after_enter != NULL){
+      cb.after_enter(cb.userdata);
     }
     
     // if children >
     while(true){
       if(debug)
-	logd("Children: %i stack level: %i\n", children, stack_level);
-      if(children >= 1){
-	childs[stack_level] = children;
-	stack_level += 1;
+	logd("Children: %i stack level: %i\n", frame->child_count, frame - frames);
+      if(frame->child_count >= 0){
+	frame = frame + 1;
 	break;
-      }else if(stack_level > 0){
-	var pop = callbacks[stack_level];
-	if(pop != NULL)
-	  pop(reg);
-	 
-	stack_level -= 1;
-	children = childs[stack_level] -= 1;
-	if(lisp)
-	  logd(")");
+      }else if(frame != frames ){
+	var handler = reg->opcode_handlers[frame->opcode];
+	var cb = render_callback_get(reg);
+	if(cb.before_exit != NULL){
+	  cb.before_exit(cb.userdata);
+	}
+	if(handler.exit != NULL){
+	  handler.exit(reg);
+	}
+	frame = frame - 1;
+	
       }else{
-	if(lisp)
-	  logd(")");
+	// tree ended.
 	break;
       }
     }
-    if(lisp)
-      logd("\n");
   }
 }
 
@@ -366,7 +355,13 @@ void binui_init(binui_context * ctx){
   memset(ctx, 0, sizeof(ctx[0]));
   ctx->inited = true;
 
-  binui_opcode_handler h;
+  binui_opcode_handler h = {0};
+
+  h.enter = module_enter;
+  h.has_children = false;
+  h.exit = NULL;
+  binui_set_opcode_handler(BINUI_IMPORT_MODULE, ctx, h);
+
   h.enter = color_enter;
   h.exit = color_exit;
   h.has_children = true;
@@ -387,7 +382,12 @@ void binui_init(binui_context * ctx){
   h.enter = rectangle_enter;
   h.has_children = false;
   binui_set_opcode_handler(BINUI_RECTANGLE, ctx, h);
-  binui_3d_init(ctx);  
+
+
+
+  binui_3d_init(ctx);
+
+    
   
 }
 
@@ -502,8 +502,6 @@ void binui_test_load(io_writer * wd){
   
   io_write_u32_leb(wd, BINUI_OPCODE_NONE);
   io_reset(wd);
- 
-
 }
 
 

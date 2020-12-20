@@ -80,18 +80,45 @@ canvas_context * canvas_get_context(u64 canvas){
 static void blit_rectangle3(void * userdata){
   var ctx = (canvas_context *) userdata;
   if(ctx == NULL) return;
-  if(ctx->binui.current_opcode != BINUI_RECTANGLE) return;
-  int x, y;
-  u32 w, h;
+  
+  var opcode = ctx->binui.current_opcode;
+
+  switch(opcode){
+  case BINUI_3D_POLYGON:
+  case BINUI_RECTANGLE:
+    break;
+  default: return;
+  }
   u32 color;
-  binui_get_position(&ctx->binui, &x, &y);
-  binui_get_size(&ctx->binui, &w, &h);
   binui_get_color(&ctx->binui, &color);
   f32 r,g,b,a;
   r = (color & 0xFF) * (1.0 / 255.0); 
   g = ((color >> 8) & 0xFF) * (1.0 / 255.0);
   b = ((color >> 16) & 0xFF) * (1.0 / 255.0);
   a = ((color >> 24) & 0xFF) * (1.0 / 255.0);
+  
+  
+  if(opcode == BINUI_3D_POLYGON){
+    binui_polygon poly = binui_polygon_get(&ctx->binui);
+    blit3d_polygon * p = blit3d_polygon_new();
+    blit3d_polygon_load_data(p, poly.data, poly.count * poly.dim * sizeof(f32));
+    //blit3d_color(&ctx->binui, vec4_new(r,g,b,a));
+    
+
+    logd("Render polygon %i!\n", poly.count);
+    
+    blit3d_polygon_destroy(&p);
+
+    return;
+  }
+  
+  if(ctx->binui.current_opcode != BINUI_RECTANGLE) return;
+  
+  int x, y;
+  binui_get_position(&ctx->binui, &x, &y);
+
+  u32 w, h;
+  binui_get_size(&ctx->binui, &w, &h);
   blit_rectangle(x, y, w, h, r,g,b,a);
   
 }
@@ -118,7 +145,8 @@ void render_canvas(u64 canvas){
   }
 
   render_callback render = {
-    .callback = blit_rectangle3,
+    .after_enter = blit_rectangle3,
+    .before_exit = NULL,
     .userdata = ctx
   };
 

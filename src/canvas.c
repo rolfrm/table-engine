@@ -115,12 +115,12 @@ static void blit_rectangle3(binui_stack_frame * frame, void * userdata){
   
   if(ctx->binui.current_opcode != BINUI_RECTANGLE) return;
   
-  int x, y;
-  binui_get_position(&ctx->binui, &x, &y);
+  vec2i p;
+  binui_get_position(&ctx->binui, &p);
 
-  u32 w, h;
-  binui_get_size(&ctx->binui, &w, &h);
-  blit_rectangle(x, y, w, h, r,g,b,a);
+  vec2i s;
+  binui_get_size(&ctx->binui, &s);
+  blit_rectangle(p.x, p.y, s.x, s.y, r,g,b,a);
   
 }
 

@@ -61,8 +61,9 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader);
 
 void binui_iterate(binui_context * reg, io_reader * reader);
 
-void binui_get_position(binui_context * reg, i32 * x, i32 * y);
-void binui_get_size(binui_context * reg, u32 * w, u32 * h);
+void binui_get_position(binui_context * reg, vec2i *);
+void binui_get_set_position(binui_context * reg, vec2i *);
+void binui_get_size(binui_context * reg, vec2i *);
 void binui_get_color(binui_context * reg, u32 * color);
 
 typedef struct{

@@ -139,63 +139,56 @@ void color_exit(binui_context * ctx){
   pop_color(ctx);
 }
 
+binui_stack_register position_reg = {.size = sizeof(vec2i), .stack = {0}};
+binui_stack_register set_position_reg = {.size = sizeof(vec2i), .stack = {0}};
 
-typedef struct{
-  i32 x, y;
-}posi;
-
-binui_stack_register position_reg = {.size = sizeof(posi), .stack = {0}};
-
-void position_get(binui_context * ctx, i32 * x, i32 * y){
-  posi pos = {0};
-  
-  if(binui_stack_register_top(ctx, &position_reg, &pos)){
-    *x = pos.x;
-    *y = pos.y;
-  }else{
-    *x = 0;
-    *y = 0;
+void position_get(binui_context * ctx, vec2i * get){
+  if(!binui_stack_register_top(ctx, &position_reg, get)){
+    *get = vec2i_zero;
   }
-     
 }
 
-void binui_get_position(binui_context * ctx, i32 * x, i32 * y){
-  position_get(ctx, x, y);
+void binui_get_set_position(binui_context * reg, vec2i * get){
+  if(!binui_stack_register_top(reg, &set_position_reg, get)){
+    *get = vec2i_zero;
+  }
 }
 
-void position_push(binui_context * ctx, int x, int y){
-  posi pos = {0};
-  binui_stack_register_top(ctx, &position_reg, &pos);
-  pos.x += x;
-  pos.y += y;
+void binui_get_position(binui_context * ctx, vec2i *v){
+  position_get(ctx, v);
+}
+
+void position_push(binui_context * ctx, vec2i pos){
+  binui_stack_register_push(ctx, &set_position_reg, &pos);
+  vec2i pos0 = {0};
+  binui_stack_register_top(ctx, &position_reg, &pos0);
+  pos = vec2i_add(pos, pos0);
   binui_stack_register_push(ctx, &position_reg, &pos);
 }
 
 void position_pop(binui_context * ctx){
   binui_stack_register_pop(ctx, &position_reg, NULL);
+  binui_stack_register_pop(ctx, &set_position_reg, NULL);
 }
 
 void position_enter(binui_context * ctx, io_reader * reader){
-  i32 x  = io_read_i32_leb(reader);
-  i32 y  = io_read_i32_leb(reader);
-  position_push(ctx, x, y);
+  i32 x = io_read_i32_leb(reader);
+  i32 y = io_read_i32_leb(reader);
+  position_push(ctx, vec2i_new(x, y));
 }
 
 void position_exit(binui_context * ctx){
   position_pop(ctx);
 }
 
-binui_stack_register size_reg = {.size = sizeof(posi), .stack = {0}};
+binui_stack_register size_reg = {.size = sizeof(vec2i), .stack = {0}};
 
-void size_get(binui_context * ctx, int * x, int * y){
-  posi size = {0};
-  binui_stack_register_top(ctx, &size_reg, &size);
-  *x = size.x;
-  *y = size.y;
+void size_get(binui_context * ctx, vec2i * get){
+  if(!binui_stack_register_top(ctx, &size_reg, get))
+    *get = vec2i_zero;
 }
 
-void size_push(binui_context * ctx, int x, int y){
-  posi size = {.x = x, .y = y};
+void size_push(binui_context * ctx, vec2i size){
   binui_stack_register_push(ctx, &size_reg, &size);
 }
 
@@ -206,18 +199,15 @@ void size_pop(binui_context * ctx){
 void size_enter(binui_context * ctx, io_reader * reader){
   i32 x  = io_read_i32_leb(reader);
   i32 y  = io_read_i32_leb(reader);
-  size_push(ctx, x, y);
+  size_push(ctx, vec2i_new(x, y));
 }
 
 void size_exit(binui_context * ctx){
   size_pop(ctx);
 }
 
-void binui_get_size(binui_context * ctx, u32 * w, u32 * h){
-  int _w = 0, _h = 0;
-  size_get(ctx, &_w, &_h);
-  *w = _w;
-  *h = _h;
+void binui_get_size(binui_context * ctx, vec2i * get){
+  size_get(ctx, get);
 }
 
 void module_enter(binui_context * ctx, io_reader *reader){
@@ -494,6 +484,7 @@ typedef struct{
   binui_context * ctx;
   int stack_level;
   u64 last_id;
+  bool prev_enter;
 
 }test_render_context;
 
@@ -501,22 +492,23 @@ void test_after_enter(stack_frame * frame, void * userdata){
   logd("\n");
   test_render_context * ctx = userdata;
   ctx->last_id = frame->node_id;
+  ctx->prev_enter = true;
   for(int i = 0; i < ctx->stack_level; i++)
     logd(" ");
   logd("(%s", binui_opcode_name(ctx->ctx->current_opcode));
   switch(frame->opcode){
   case BINUI_POSITION:
     {
-      int x,y;
-      position_get(ctx->ctx, &x, &y);
-      logd(" %i %i",x, y);
+      vec2i pos;
+      binui_get_set_position(ctx->ctx, &pos);
+      logd(" %i %i",pos.x, pos.y);
       break;
     }
   case BINUI_SIZE:
     {
-      int x,y;
-      size_get(ctx->ctx, &x, &y);
-      logd(" %i %i",x, y);
+      vec2i size;
+      size_get(ctx->ctx, &size);
+      logd(" %i %i",size.x, size.y);
       break;
     }
   case BINUI_COLOR:
@@ -534,13 +526,14 @@ void test_after_enter(stack_frame * frame, void * userdata){
 void test_before_exit(stack_frame * frame, void * userdata){
   test_render_context * ctx = userdata;
   if(frame->node_id == ctx->last_id){
-    logd(")\n");
+    logd(")");
     ctx->stack_level -= 1;
     return;
   }
-  for(int i = 0; i < ctx->stack_level; i++)
-    logd(" ");
-  logd(")\n");
+  if(ctx->prev_enter){
+    ctx->prev_enter = false;
+  }
+  logd(")");
   ctx->stack_level -= 1;
 }
 
@@ -564,29 +557,32 @@ void binui_test(){
   logd("Color: %u\n", pop_color(&reg));
   logd("Color: %u\n", pop_color(&reg));
   logd("Color: %u\n", pop_color(&reg));
-  int x, y;
-  position_push(&reg, 1, 1);
-  position_get(&reg, &x, &y);
-  logd(" %i %i\n", x, y);
-  position_push(&reg, 2, 2);
-  position_push(&reg, 3, 3);
+  
+  vec2i s;
+  position_push(&reg, vec2i_new(1, 1));
+  position_get(&reg, &s);
+  logd(" %i %i\n", s.x, s.y);
+  position_push(&reg, vec2i_new(2, 2));
+  position_push(&reg, vec2i_new(3, 3));
 
-  position_get(&reg, &x, &y);
-  logd(" %i %i\n", x, y);
-  ASSERT(x == 6 && y == 6);
+  position_get(&reg, &s);
+  logd(" %i %i\n", s.x, s.y);
+  ASSERT(s.x == 6 && s.y == 6);
   position_pop(&reg);
-  position_get(&reg, &x, &y);
-  ASSERT(x == 3 && y == 3);
+  position_get(&reg, &s);
+  ASSERT(s.x == 3 && s.y == 3);
   position_pop(&reg);
   position_pop(&reg);
 
-  size_push(&reg, 1, 1);
-  size_push(&reg, 2, 2);
-  size_get(&reg, &x, &y);
-  ASSERT(x == 2 && y == 2);
+  size_push(&reg, vec2i_new(1, 1));
+  size_push(&reg, vec2i_new(2, 2));
+  s = vec2i_zero;
+  size_get(&reg, &s);
+  ASSERT(s.x == 2 && s.y == 2);
   size_pop(&reg);
-  size_get(&reg, &x, &y);
-  ASSERT(x == 1 && y == 1);
+  
+  size_get(&reg, &s);
+  ASSERT(s.x == 1 && s.y == 1);
   
   
   io_writer _wd = {0};

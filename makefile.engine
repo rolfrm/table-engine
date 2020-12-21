@@ -1,5 +1,5 @@
 OPT = -g3 -O0
-LIB_SOURCES1 = main.c string_intern.c tables.c binui.c binui_3d.c
+LIB_SOURCES1 = main.c string_intern.c tables.c binui.c binui_3d.c binui_lisp_parser.c
 
 LIB_SOURCES = $(addprefix src/, $(LIB_SOURCES1)) libmicroio/src/microio.c
 CC = gcc

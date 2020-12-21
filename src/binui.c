@@ -536,6 +536,7 @@ void test_before_exit(stack_frame * frame, void * userdata){
   logd(")");
   ctx->stack_level -= 1;
 }
+void test_binui_load_lisp();
 
 void binui_test(){
 
@@ -589,41 +590,7 @@ void binui_test(){
   io_writer * wd = &_wd;
   binui_test_load(wd);
   binui_iterate(&reg, wd);
-  /*io_write_u8(wd, BINUI_SIZE);
-  // 500x500
-  io_write_u16(wd, 500);
-  io_write_u16(wd, 500);
-  io_write_u8(wd, BINUI_COLOR);
-  // rgba
-  io_write_u8(wd, 255);
-  io_write_u8(wd, 0);
-  io_write_u8(wd, 0);
-  io_write_u8(wd, 255);
-  io_write_u8(wd, BINUI_ID);
-  const char * grpname = "hello world";
-  io_write_strn(wd, grpname);
-  
-  io_write_u8(wd, BINUI_RECT);
-
-  io_write_u8(wd, BINUI_SIZE);
-  // 500x500
-  io_write_u16(wd, 500);
-  io_write_u16(wd, 500);
-  io_write_u8(wd, BINUI_COLOR);
-  // rgba
-  io_write_u8(wd, 255);
-  io_write_u8(wd, 255);
-  io_write_u8(wd, 0);
-  io_write_u8(wd, 255);
-  io_write_u8(wd, BINUI_ID);
-  const char * grpname2 = "hello world2";
-  io_write_strn(wd, grpname2);
-  io_write_u8(wd, BINUI_CIRCLE);
-  
-  io_reset(wd);
-  binui_describe(wd);
-  io_reset(wd);
-  binui_iterate(wd, test_iterate, NULL);*/
-  
+  logd("\n");
+  test_binui_load_lisp();  
 
 }

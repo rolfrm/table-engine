@@ -1,5 +1,5 @@
 OPT = -g3 -O1
-LIB_SOURCES1 = tests.c canvas.c binui.c binui_3d.c
+LIB_SOURCES1 = tests.c canvas.c binui.c binui_3d.c binui_lisp_parser.c
 
 LIB_SOURCES = $(addprefix src/, $(LIB_SOURCES1))
 CC = gcc

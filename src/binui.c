@@ -515,7 +515,7 @@ void test_after_enter(stack_frame * frame, void * userdata){
     {
       u32 color;
       binui_get_color(ctx->ctx, &color);
-      logd(" #%p", color);
+      logd(" #%x", color);
     }
   }
 

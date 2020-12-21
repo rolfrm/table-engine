@@ -16,9 +16,11 @@
 typedef struct{
   io_reader * rd;
   size_t offset;
+  int error;
 }string_reader;
 
 void fix_reader(string_reader rd){
+  ASSERT(rd.error == 0);
   var rd2 = rd.rd;
   size_t loc = io_getloc(rd2);
   if(loc > rd.offset){
@@ -44,6 +46,15 @@ string_reader read_until(string_reader rd, io_writer * writer, bool (* f)(char c
   return rd;
 }
 
+static __thread bool (* current_f)(char c);
+bool not_current_f(char c){
+  return !current_f(c);
+}
+string_reader read_while(string_reader rd, io_writer * writer, bool (* f)(char c)){
+  current_f = f;
+  return read_until(rd, writer, not_current_f);
+}
+
 
 static __thread char selected_char;
 bool check_selected_char(char c){
@@ -57,9 +68,16 @@ string_reader read_untilc(string_reader rd, io_writer * writer, char c){
 string_reader skip_until(string_reader rd, bool (*f)(char c)){
   return read_until(rd, NULL, f);
 }
+
 string_reader skip_untilc(string_reader rd, char c){
   return read_untilc(rd, NULL, c);
 }
+
+string_reader skip_while(string_reader rd, bool (*f)(char c)){
+  return read_while(rd, NULL, f);
+}
+
+
 
 bool is_digit(char c){
   return c >= '0' && c <= '9';
@@ -75,6 +93,10 @@ bool is_alphanum(char c){
 
 bool is_whitespace(char c){
   return c == ' ' || c == '\t' || c == '\n';
+}
+
+bool is_hex(char c){
+  return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
 bool is_endexpr(char c){
@@ -98,9 +120,66 @@ io_reader io_from_bytes(const void * bytes, size_t size){
   return rd;
 }
 
+string_reader read_hex(string_reader rd, io_writer * buffer, u64 * out){
+  u64 r = 0;
+  io_reset(buffer);
+  rd = read_until(rd, buffer, is_endexpr);
+  char * str = buffer->data;
+  for(size_t i = 0; i < buffer->offset; i++){
+    var c = str[i];
+    if(!is_hex(str[i])){
+      rd.error = 1;
+      break;
+    }
+    u64 v = 0;
+    if(c >= '0' && c <= '9'){
+      v = c - '0';
+    }else if(c >= 'a' && c <= 'f'){
+      v = c - 'a' + 10;
+    }else if(c >= 'A' && c <= 'F'){
+      v = c - 'A' + 10;
+    
+    }else{
+      ERROR("This is impossible!");
+    }
+    r = (r << 4) | v;
+  }
+  *out = r;
+  return rd;
+}
+
+
+string_reader read_integer(string_reader rd, io_writer * buffer, i64 * out){
+  i64 r = 0;
+  bool negative = false;
+  io_reset(buffer);
+  rd = read_until(rd, buffer, is_endexpr);
+  char * str = buffer->data;
+  for(size_t i = 0; i < buffer->offset; i++){
+    var c = str[i];
+    if(c == '-'){
+      negative = true;
+      continue;
+    }
+    if(!is_digit(str[i])){
+      rd.error = 1;
+      break;
+    }
+    u64 v = 0;
+    if(c >= '0' && c <= '9'){
+      v = c - '0';
+    }else{
+      ERROR("This is impossible!");
+    }
+    r = (r * 10) + v;
+  }
+  *out = negative ? -r : r;
+  return rd;
+}
+
 void test_binui_load_lisp(){
   logd("TEST BINUI LOAD LISP\n");
-  const char * target = "   \n (color #0x11223344)";
+  const char * target = "   \n (color #112233fFff -123)";
 
   io_writer writer = {0};
   io_reader rd = io_from_bytes(target, strlen(target) + 1);
@@ -121,5 +200,34 @@ void test_binui_load_lisp(){
   var rd4 = read_until(rd3, &symbol_writer, is_endexpr);
   ASSERT(symbol_writer.offset == strlen("color"));
   ASSERT(strncmp(symbol_writer.data, "color", symbol_writer.offset) == 0);
+   
+  var rd5 = skip_while(rd4, is_whitespace); 
+  var next2 = next_byte(rd5);
+  
+  ASSERT(next2 == '#');
+  rd5.offset += 1;
+  io_reset(&symbol_writer);
+  u64 hexv = 0;
+  var rd6 = read_hex(rd5, &symbol_writer, &hexv);
+  ASSERT(rd6.error == 0);
+  ASSERT(hexv == 0x112233ffff);
+
+  logd("Hex: %p\n", hexv);
+
+  
+  var next3 = next_byte(rd6);
+  ASSERT(next3 == ' ');
+  var rd7 = skip_while(rd6, is_whitespace);
+  i64 i = 0;
+  var rd8 = read_integer(rd7, &symbol_writer, &i);
+  ASSERT(i == -123);
+  rd8 = skip_while(rd8, is_whitespace);
+  var next5 = next_byte(rd8);
+  logd("next5: '%c'\n", next5);
+  ASSERT(next5 == ')');
+  var next4 = next_byte(rd3);
+  ASSERT(next4 == 'c');
+  
   logd("OK\n");
+
 }

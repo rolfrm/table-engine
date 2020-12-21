@@ -12,6 +12,10 @@
 #include <microio.h>
 
 #include "binui.h"
+
+typedef binui_stack_frame stack_frame;
+
+
 extern io_writer * binui_stdout;
 
 #ifdef NO_STDLIB
@@ -258,11 +262,6 @@ node_callback node_callback_get(binui_context * ctx){
   return callback;
 }
 
-typedef struct{
-  u32 opcode;
-  u32 child_count;
-  u64 node_id;
-}stack_frame;
 
 void binui_iterate_internal(binui_context * reg, io_reader * reader){
   ASSERT(reg->inited == true);
@@ -297,7 +296,7 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
     var cb = node_callback_get(reg);
     
     if(cb.after_enter != NULL){
-      cb.after_enter(cb.userdata);
+      cb.after_enter(frame, cb.userdata);
     }
     
     // if children >
@@ -311,7 +310,7 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
 	var handler = reg->opcode_handlers[frame->opcode];
 	var cb = node_callback_get(reg);
 	if(cb.before_exit != NULL){
-	  cb.before_exit(cb.userdata);
+	  cb.before_exit(frame, cb.userdata);
 	}
 	if(handler.exit != NULL){
 	  handler.exit(reg);
@@ -494,19 +493,51 @@ void binui_test_load(io_writer * wd){
 typedef struct{
   binui_context * ctx;
   int stack_level;
+  u64 last_id;
 
 }test_render_context;
 
-void test_after_enter(void * userdata){
- test_render_context * ctx = userdata;
- for(int i = 0; i < ctx->stack_level; i++)
-   logd(" ");
-  logd("(%s \n", binui_opcode_name(ctx->ctx->current_opcode));
+void test_after_enter(stack_frame * frame, void * userdata){
+  logd("\n");
+  test_render_context * ctx = userdata;
+  ctx->last_id = frame->node_id;
+  for(int i = 0; i < ctx->stack_level; i++)
+    logd(" ");
+  logd("(%s", binui_opcode_name(ctx->ctx->current_opcode));
+  switch(frame->opcode){
+  case BINUI_POSITION:
+    {
+      int x,y;
+      position_get(ctx->ctx, &x, &y);
+      logd(" %i %i",x, y);
+      break;
+    }
+  case BINUI_SIZE:
+    {
+      int x,y;
+      size_get(ctx->ctx, &x, &y);
+      logd(" %i %i",x, y);
+      break;
+    }
+  case BINUI_COLOR:
+    {
+      u32 color;
+      binui_get_color(ctx->ctx, &color);
+      logd(" #%p", color);
+    }
+  }
+
+  
   ctx->stack_level += 1;
 }
 
-void test_before_exit(void * userdata){
+void test_before_exit(stack_frame * frame, void * userdata){
   test_render_context * ctx = userdata;
+  if(frame->node_id == ctx->last_id){
+    logd(")\n");
+    ctx->stack_level -= 1;
+    return;
+  }
   for(int i = 0; i < ctx->stack_level; i++)
     logd(" ");
   logd(")\n");

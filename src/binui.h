@@ -66,9 +66,15 @@ void binui_get_size(binui_context * reg, u32 * w, u32 * h);
 void binui_get_color(binui_context * reg, u32 * color);
 
 typedef struct{
+  u32 opcode;
+  u32 child_count;
+  u64 node_id;
+}binui_stack_frame;
+
+typedef struct{
   
-  void (* after_enter)(void * userdata);
-  void (* before_exit)(void * userdata);
+  void (* after_enter)(binui_stack_frame * frame, void * userdata);
+  void (* before_exit)(binui_stack_frame * frame, void * userdata);
   
   void * userdata;
 }node_callback;

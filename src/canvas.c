@@ -77,7 +77,8 @@ canvas_context * canvas_get_context(u64 canvas){
   return (canvas_context *) ptr;
 }
 
-static void blit_rectangle3(void * userdata){
+static void blit_rectangle3(binui_stack_frame * frame, void * userdata){
+  UNUSED(frame);
   var ctx = (canvas_context *) userdata;
   if(ctx == NULL) return;
   

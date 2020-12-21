@@ -54,7 +54,7 @@ void polygon_3d_enter(binui_context * ctx, io_reader * reader){
 		     .dim = dim,
 		     .count = vert_cnt
   };
-  logd("Loading a polygon of size %ix%i\n", vert_cnt, dim);
+  //logd("Loading a polygon of size %ix%i\n", vert_cnt, dim);
   binui_stack_register_push(ctx, &polygon_3d_register, &d);  
 
 }

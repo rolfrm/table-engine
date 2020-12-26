@@ -170,21 +170,73 @@ string_reader read_integer(string_reader rd, io_writer * buffer, i64 * out){
   return rd;
 }
 
-void binui_load_lisp(io_reader * rd, io_writer * write){
-  string_reader r = {.rd = rd, .offset = io_offset(rd)};
-  
-  r = skip_untilc(r, '(');
-  r.offset += 1;
-  r = skip_while(r, is_whitespace);
+string_reader parse_sub(string_reader rd, io_writer * write){
+  rd = skip_untilc(rd, '(');
+  rd.offset += 1;
+  rd = skip_while(rd, is_whitespace);
   
   io_writer name_buffer = {0};
-  var rd4 = read_until(r, &name_buffer, is_endexpr);
+  var rd4 = read_until(rd, &name_buffer, is_endexpr);
   ASSERT(!rd4.error);
   io_write_u8(&name_buffer, 0);
  
   binui_opcode opcode = binui_opcode_parse(name_buffer.data);
-  logd("Opcode: %i '%s'\n", opcode, name_buffer.data);
+  io_write_u8(write, opcode);
+  io_reset(&name_buffer);
+  string_reader rd_after;
+  if(opcode == BINUI_COLOR){
+    io_reset(&name_buffer);
+    rd4 = skip_while(rd4, is_whitespace);
   
+    char next = next_byte(rd4);
+    
+    ASSERT(next == '#');
+    rd4.offset += 1;
+    u64 hex_value = 0;
+    var rd5 = read_hex(rd4, &name_buffer, &hex_value);
+    
+    io_write_u32(write, hex_value);
+    rd5 = skip_while(rd5, is_whitespace);
+    rd_after = rd5;
+  }
+  io_reset(&name_buffer);
+  u32 child_count = 0;
+  while(true){
+    var rd2 = skip_while(rd_after, is_whitespace);
+  
+    char next = next_byte(rd2);
+    if(next == '('){
+      rd_after = parse_sub(rd2, &name_buffer);
+      child_count += 1;
+      continue;
+    }
+    else if(next == ')'){
+      rd2.offset += 1;
+      rd_after = rd2;
+      break;
+    }
+    else{
+      logd("Unexpected token '%c'", next);
+      rd2.error = 1;
+      rd_after = rd2;
+      break;
+    }
+  }
+  io_write_u32_leb(write, child_count);
+  io_write_u32_leb(write, BINUI_MAGIC);
+  
+  io_write(write, name_buffer.data, name_buffer.offset);
+  io_writer_clear(&name_buffer);
+  return rd_after;
+}
+
+void binui_load_lisp(io_reader * rd, io_writer * write){
+  string_reader r = {.rd = rd, .offset = io_offset(rd)};
+  r = parse_sub(r, write);
+  if(r.error){
+    ERROR("ERROR!\n");
+  }
+  io_write_i8(write, BINUI_OPCODE_NONE);
 }
 
 
@@ -241,15 +293,34 @@ void test_binui_string_reader(){
   io_writer_clear(&symbol_writer);
   logd("OK\n");
 }
-
+void test_write_lisp(void * buffer, size_t size);
 void test_binui_lisp_loader(){
   logd("TEST Binui Lisp Loader\n");
+  {
+    const char * target = "   \n (color #112233fF)";
+    io_writer writer = {0};
+    io_reader rd = io_from_bytes(target, strlen(target) + 1);
+    binui_load_lisp(&rd, &writer);
+    char * buffer = writer.data;
+    for(size_t i = 0; i < writer.offset; i++){
+      logd("%x ", buffer[i]);
+    }
+    logd("\nDone loading lisp (%i bytes)\n", writer.offset);
+  }
+  {
+    const char * target = "   \n (color #44332211 (color #55443322))";
+    io_writer writer = {0};
+    io_reader rd = io_from_bytes(target, strlen(target) + 1);
+    binui_load_lisp(&rd, &writer);
+    char * buffer = writer.data;
+    for(size_t i = 0; i < writer.offset; i++){
+      logd("%i ", buffer[i]);
+    }
+    logd("\nDone loading lisp (%i bytes)\n", writer.offset);
+    test_write_lisp(writer.data, writer.offset);
+    logd("Rewriting lisp\n");
+  }
 
-  const char * target = "   \n (color #112233fF)";
-  io_writer writer = {0};
-  io_reader rd = io_from_bytes(target, strlen(target) + 1);
-  binui_load_lisp(&rd, &writer);
-  
 }
 
 void test_binui_load_lisp(){

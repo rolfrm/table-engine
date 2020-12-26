@@ -268,12 +268,14 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
     if(frame->opcode == BINUI_OPCODE_NONE)
       break;
     
+    
     if(reg->opcode_handler_count > frame->opcode){
       var handler = reg->opcode_handlers[frame->opcode];
       if(handler.enter != NULL){
 	handler.enter(reg, reader);
-	if(handler.has_children)
+	if(handler.has_children){
 	  frame->child_count = io_read_u64_leb(reader);
+	}
       }
     }else{
       ERROR("No handler for opcode!");
@@ -586,6 +588,24 @@ void test_before_exit(stack_frame * frame, void * userdata){
   ctx->stack_level -= 1;
 }
 void test_binui_load_lisp();
+io_reader io_from_bytes(const void * bytes, size_t size);
+void test_write_lisp(void * buffer, size_t size){
+  
+  binui_context reg;
+  binui_init(&reg);
+  test_render_context rctx = {.ctx = &reg, .stack_level = 0};
+  
+  node_callback cb = {.after_enter = test_after_enter,
+		      .before_exit = test_before_exit,
+		      .userdata = &rctx};
+  node_callback_push(&reg, cb);
+  
+  io_reader rd = io_from_bytes(buffer, size);
+  binui_iterate(&reg, &rd);
+  logd("\n");
+  
+}
+
 
 void binui_test(){
 

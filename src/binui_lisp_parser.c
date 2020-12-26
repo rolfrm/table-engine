@@ -22,13 +22,13 @@ typedef struct{
 void fix_reader(string_reader rd){
   ASSERT(rd.error == 0);
   var rd2 = rd.rd;
-  size_t loc = io_getloc(rd2);
+  size_t loc = io_offset(rd2);
   if(loc > rd.offset){
     io_rewind(rd2, loc -rd.offset);
   }else if(loc < rd.offset){
     io_advance(rd2, rd.offset - loc);
   }
-  ASSERT(rd.offset == io_getloc(rd2));
+  ASSERT(rd.offset == io_offset(rd2));
 }
 
 string_reader read_until(string_reader rd, io_writer * writer, bool (* f)(char c)){
@@ -50,16 +50,17 @@ static __thread bool (* current_f)(char c);
 bool not_current_f(char c){
   return !current_f(c);
 }
+
 string_reader read_while(string_reader rd, io_writer * writer, bool (* f)(char c)){
   current_f = f;
   return read_until(rd, writer, not_current_f);
 }
 
-
 static __thread char selected_char;
 bool check_selected_char(char c){
   return selected_char == c;
 }
+
 string_reader read_untilc(string_reader rd, io_writer * writer, char c){
   selected_char = c;
   return read_until(rd, writer, check_selected_char);
@@ -76,8 +77,6 @@ string_reader skip_untilc(string_reader rd, char c){
 string_reader skip_while(string_reader rd, bool (*f)(char c)){
   return read_while(rd, NULL, f);
 }
-
-
 
 bool is_digit(char c){
   return c >= '0' && c <= '9';
@@ -110,11 +109,6 @@ u8 next_byte(string_reader rd){
   return io_peek_u8(rd2);  
 }
 
-/*void binui_load_lisp(io_reader * rd, io_writer * write){
-  string_reader r = {.rd = rd, .offset = io_getloc(rd)};
-  r = string_reader_readuntil(r, "(");
-  }*/
-
 io_reader io_from_bytes(const void * bytes, size_t size){
   io_reader rd = {.data = (void *) bytes, .offset = 0, .size = size}; 
   return rd;
@@ -137,8 +131,7 @@ string_reader read_hex(string_reader rd, io_writer * buffer, u64 * out){
     }else if(c >= 'a' && c <= 'f'){
       v = c - 'a' + 10;
     }else if(c >= 'A' && c <= 'F'){
-      v = c - 'A' + 10;
-    
+      v = c - 'A' + 10;    
     }else{
       ERROR("This is impossible!");
     }
@@ -177,8 +170,26 @@ string_reader read_integer(string_reader rd, io_writer * buffer, i64 * out){
   return rd;
 }
 
-void test_binui_load_lisp(){
-  logd("TEST BINUI LOAD LISP\n");
+void binui_load_lisp(io_reader * rd, io_writer * write){
+  string_reader r = {.rd = rd, .offset = io_offset(rd)};
+  
+  r = skip_untilc(r, '(');
+  r.offset += 1;
+  r = skip_while(r, is_whitespace);
+  
+  io_writer name_buffer = {0};
+  var rd4 = read_until(r, &name_buffer, is_endexpr);
+  ASSERT(!rd4.error);
+  io_write_u8(&name_buffer, 0);
+ 
+  binui_opcode opcode = binui_opcode_parse(name_buffer.data);
+  logd("Opcode: %i '%s'\n", opcode, name_buffer.data);
+  
+}
+
+
+void test_binui_string_reader(){
+  logd("TEST Binui String Reader\n");
   const char * target = "   \n (color #112233fFff -123)";
 
   io_writer writer = {0};
@@ -213,7 +224,6 @@ void test_binui_load_lisp(){
   ASSERT(hexv == 0x112233ffff);
 
   logd("Hex: %p\n", hexv);
-
   
   var next3 = next_byte(rd6);
   ASSERT(next3 == ' ');
@@ -227,7 +237,22 @@ void test_binui_load_lisp(){
   ASSERT(next5 == ')');
   var next4 = next_byte(rd3);
   ASSERT(next4 == 'c');
-  
-  logd("OK\n");
 
+  io_writer_clear(&symbol_writer);
+  logd("OK\n");
+}
+
+void test_binui_lisp_loader(){
+  logd("TEST Binui Lisp Loader\n");
+
+  const char * target = "   \n (color #112233fF)";
+  io_writer writer = {0};
+  io_reader rd = io_from_bytes(target, strlen(target) + 1);
+  binui_load_lisp(&rd, &writer);
+  
+}
+
+void test_binui_load_lisp(){
+  test_binui_string_reader();
+  test_binui_lisp_loader();
 }

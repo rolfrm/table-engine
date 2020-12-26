@@ -9,6 +9,7 @@
 #include <iron/log.h>
 #include <iron/mem.h>
 #include <iron/linmath.h>
+#include <iron/hashtable.h>
 #include <microio.h>
 
 #include "binui.h"
@@ -350,23 +351,71 @@ void binui_init(binui_context * ctx){
   binui_3d_init(ctx);  
 }
 
+typedef struct{
+  binui_opcode opcode;
+  const char * name;
+}binui_opcode_name2;
+
+void binui_init_lookup(hash_table ** _opcode2name, hash_table ** _name2opcode){
+
+  static hash_table * opcode2name;
+  static hash_table * name2opcode;
+  if(opcode2name != NULL){
+    if(_opcode2name != NULL)
+      *_opcode2name = opcode2name;
+    if(_name2opcode != NULL)
+      *_name2opcode = name2opcode;
+    return;
+  }
+
+  opcode2name = ht_create(sizeof(binui_opcode), sizeof(char *));
+  name2opcode = ht_create_strkey(sizeof(binui_opcode));
+
+  binui_opcode_name2 opcode_names[] =
+    {
+     {.opcode = BINUI_OPCODE_NONE, .name = "none"},
+     {.opcode = BINUI_IMPORT_MODULE, .name = "import"},
+     {.opcode = BINUI_CANVAS, .name = "canvas"},
+     {.opcode = BINUI_RECTANGLE, .name = "rectangle"},
+     {.opcode = BINUI_POSITION, .name = "position"},
+     {.opcode = BINUI_SIZE, .name = "size"},
+     {.opcode = BINUI_COLOR, .name = "color"},
+     {.opcode = BINUI_3D, .name = "3d"},
+     {.opcode = BINUI_3D_TRANSFORM, .name = "transform"},
+     {.opcode = BINUI_3D_POLYGON, .name = "polygon"},
+    };
+
+  for(size_t i = 0; i < array_count(opcode_names); i++){
+    ht_set(opcode2name, &opcode_names[i].opcode, &opcode_names[i].name);
+    logd("inserting: %s\n", opcode_names[i].name);
+    ht_set(name2opcode, &opcode_names[i].name, &opcode_names[i].opcode);
+  }
+  binui_init_lookup(_opcode2name, _name2opcode);
+}
+
 
 const char * binui_opcode_name(binui_opcode opcode){
-  switch(opcode)
-    {
-    case BINUI_OPCODE_NONE: return "none";
-    case BINUI_IMPORT_MODULE: return "import";
-    case BINUI_CANVAS: return "canvas";
-    case BINUI_RECTANGLE: return "rectangle";
-    case BINUI_POSITION: return "position";
-    case BINUI_SIZE: return "size";
-    case BINUI_COLOR: return "color";
-    case BINUI_3D: return "3d";
-    case BINUI_3D_TRANSFORM: return "transform";
-    case BINUI_3D_POLYGON: return "polygon";
-    case BINUI_MAGIC: ERROR("Invalid opcode"); return NULL;
-    }
+  hash_table * opcode2name;
+  binui_init_lookup(&opcode2name, NULL);
+  const char * name = NULL;
+  if(!ht_get(opcode2name, &opcode, &name)){
+    ERROR("Unrecognized opcode %i\n", opcode);
+    return NULL;
+  }
+  return name;
 }
+
+binui_opcode binui_opcode_parse(const char * name){
+  hash_table * name2opcode;
+  binui_init_lookup(NULL, &name2opcode);
+  binui_opcode opcode;
+  if(!ht_get(name2opcode, &name, &opcode)){
+    return BINUI_OPCODE_NONE;
+  }
+  
+  return opcode;
+}
+
 void handle_opcode(binui_context * registers, void * userdata){
   UNUSED(registers);
   UNUSED(userdata);
@@ -540,8 +589,6 @@ void test_binui_load_lisp();
 
 void binui_test(){
 
-  
-  
   binui_context reg;
   binui_init(&reg);
   test_render_context rctx = {.ctx = &reg, .stack_level = 0};
@@ -592,5 +639,5 @@ void binui_test(){
   binui_iterate(&reg, wd);
   logd("\n");
   test_binui_load_lisp();  
-
+  
 }

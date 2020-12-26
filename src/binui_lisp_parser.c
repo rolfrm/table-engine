@@ -146,6 +146,7 @@ string_reader read_integer(string_reader rd, io_writer * buffer, i64 * out){
   i64 r = 0;
   bool negative = false;
   io_reset(buffer);
+  rd = skip_while(rd, is_whitespace);
   rd = read_until(rd, buffer, is_endexpr);
   char * str = buffer->data;
   for(size_t i = 0; i < buffer->offset; i++){
@@ -184,9 +185,9 @@ string_reader parse_sub(string_reader rd, io_writer * write){
   io_write_u8(write, opcode);
   io_reset(&name_buffer);
   string_reader rd_after;
+  rd4 = skip_while(rd4, is_whitespace);
+  bool supports_child = true;
   if(opcode == BINUI_COLOR){
-    io_reset(&name_buffer);
-    rd4 = skip_while(rd4, is_whitespace);
   
     char next = next_byte(rd4);
     
@@ -198,12 +199,25 @@ string_reader parse_sub(string_reader rd, io_writer * write){
     io_write_u32(write, hex_value);
     rd5 = skip_while(rd5, is_whitespace);
     rd_after = rd5;
+  }else if(opcode == BINUI_POSITION || opcode == BINUI_SIZE){
+    rd4 = skip_while(rd4, is_whitespace);
+    for(int i = 0; i < 2; i++){
+      i64 x = 0;
+      rd4 = read_integer(rd4, &name_buffer, &x);
+      io_write_i64_leb(write, x);
+    }
+    rd_after = rd4;
+  }else if(opcode == BINUI_CANVAS || opcode == BINUI_RECTANGLE){
+    rd_after = rd4;
   }
+
+  supports_child = opcode != BINUI_RECTANGLE;
+
   io_reset(&name_buffer);
   u32 child_count = 0;
   while(true){
     var rd2 = skip_while(rd_after, is_whitespace);
-  
+    
     char next = next_byte(rd2);
     if(next == '('){
       rd_after = parse_sub(rd2, &name_buffer);
@@ -222,7 +236,10 @@ string_reader parse_sub(string_reader rd, io_writer * write){
       break;
     }
   }
-  io_write_u32_leb(write, child_count);
+  if(supports_child){
+    
+    io_write_u32_leb(write, child_count);
+  }
   io_write_u32_leb(write, BINUI_MAGIC);
   
   io_write(write, name_buffer.data, name_buffer.offset);
@@ -308,7 +325,7 @@ void test_binui_lisp_loader(){
     logd("\nDone loading lisp (%i bytes)\n", writer.offset);
   }
   {
-    const char * target = "   \n (color #44332211 (color #55443322))";
+    const char * target = "   \n (color #44332211 (color #55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle))))))";
     io_writer writer = {0};
     io_reader rd = io_from_bytes(target, strlen(target) + 1);
     binui_load_lisp(&rd, &writer);

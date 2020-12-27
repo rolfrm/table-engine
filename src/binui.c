@@ -45,7 +45,7 @@ typedef struct{
   size_t count;
 }stack;
 
-void stack_push(stack * stk, void * data, size_t count){
+void stack_push(stack * stk, const void * data, size_t count){
   if(stk->count + count >= stk->capacity){
     size_t newcap = stk->count * 2 + count;
     stk->capacity = newcap;
@@ -89,7 +89,7 @@ void * binui_get_register(binui_context * ctx, binui_register * registerID){
 }
 
 
-void binui_stack_register_push(binui_context * ctx, binui_stack_register * reg, void * value){
+void binui_stack_register_push(binui_context * ctx, binui_stack_register * reg, const void * value){
   reg->stack.size = sizeof(stack);
   stack * stk = binui_get_register(ctx, &reg->stack);
   stack_push(stk, value, reg->size);
@@ -210,10 +210,18 @@ void size_exit(binui_context * ctx){
 void binui_get_size(binui_context * ctx, vec2i * get){
   size_get(ctx, get);
 }
+static binui_stack_register module_name_register ={.size = sizeof(char *), .stack = {0}};
+
+char * get_module_name(binui_context * ctx){
+  char * module;
+  if(binui_stack_register_top(ctx, &module_name_register, &module))
+    return module;
+  return NULL;
+}
 
 void module_enter(binui_context * ctx, io_reader *reader){
-  u32 len = 0;
-  char * name = io_read_strn(reader, &len);
+  char * mod = get_module_name(ctx);
+  logd("MODULE: %s\n", mod);
 }
 
 void rectangle_enter(binui_context * ctx, io_reader * reader){
@@ -225,7 +233,8 @@ void canvas_enter(binui_context * ctx, io_reader * reader){
   UNUSED(reader);
 }
 
-void binui_set_opcode_handler(int opcode, binui_context * ctx, binui_opcode_handler handler){
+void binui_set_opcode_handler(binui_opcode opcode, binui_context * ctx, binui_opcode_handler handler){
+  handler.opcode = opcode;
   if(ctx->opcode_handler_count <= opcode){
     ctx->opcode_handlers = realloc(ctx->opcode_handlers, sizeof(handler) * (opcode + 1));
     
@@ -252,7 +261,35 @@ node_callback node_callback_get(binui_context * ctx){
   binui_stack_register_top(ctx, &node_callback_reg, &callback);
   return callback;
 }
+void enter_typesig(binui_context * reg, io_reader * reader, binui_auto_type * type){
+  union{
+    void * ptr;
+    
+  }data;
+  data.ptr = NULL;
+  switch(type->signature){
+  case BINUI_STRING:
+    {
+      u32 len = 0;
+      data.ptr = io_read_strn(reader, &len);
+      break;
+    }
+  default:
+    ERROR("Cannot handle type\n");
+  }
+  binui_stack_register_push(reg, type->reg, &data);
+}
 
+void exit_typesig(binui_context * reg, binui_auto_type * type){
+  union{
+    void * ptr;
+  }data;
+
+  binui_stack_register_pop(reg, type->reg, &data);
+  if(type->signature == BINUI_STRING){
+    free(data.ptr);
+  }
+}
 
 void binui_iterate_internal(binui_context * reg, io_reader * reader){
   ASSERT(reg->inited == true);
@@ -271,6 +308,9 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
     
     if(reg->opcode_handler_count > frame->opcode){
       var handler = reg->opcode_handlers[frame->opcode];
+      for(u32 i = 0; i < handler.typesig_count; i++){
+	enter_typesig(reg, reader, handler.typesig + i);
+      }
       if(handler.enter != NULL){
 	handler.enter(reg, reader);
 	if(handler.has_children){
@@ -305,6 +345,11 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
 	if(cb.before_exit != NULL){
 	  cb.before_exit(frame, cb.userdata);
 	}
+
+	for(u32 i = 0; i < handler.typesig_count; i++){
+	  exit_typesig(reg, handler.typesig + i);
+	}
+      
 	if(handler.exit != NULL){
 	  handler.exit(reg);
 	}
@@ -321,13 +366,20 @@ void binui_3d_init(binui_context * ctx);
 void binui_init(binui_context * ctx){
   memset(ctx, 0, sizeof(ctx[0]));
   ctx->inited = true;
-
+  {
+    static binui_opcode_handler h = {0};
+    static binui_auto_type type;
+    type.signature = BINUI_STRING;
+    type.reg = &module_name_register;
+    h.typesig = &type;
+    h.typesig_count = 1;
+    h.enter = module_enter;
+    h.opcode = BINUI_IMPORT_MODULE;
+    h.has_children = false;
+    binui_set_opcode_handler(BINUI_IMPORT_MODULE, ctx, h);
+  }
+  
   binui_opcode_handler h = {0};
-
-  h.enter = module_enter;
-  h.has_children = false;
-  h.exit = NULL;
-  binui_set_opcode_handler(BINUI_IMPORT_MODULE, ctx, h);
 
   h.enter = color_enter;
   h.exit = color_exit;
@@ -386,7 +438,8 @@ void binui_init_lookup(hash_table ** _opcode2name, hash_table ** _name2opcode){
      {.opcode = BINUI_3D_TRANSFORM, .name = "transform"},
      {.opcode = BINUI_3D_POLYGON, .name = "polygon"},
      {.opcode = BINUI_TRANSLATE, .name = "translate"},
-     {.opcode = BINUI_SCALE, .name = "scale"}
+     {.opcode = BINUI_SCALE, .name = "scale"},
+     {.opcode = BINUI_ROTATE, .name = "rotate"}
     };
 
   for(size_t i = 0; i < array_count(opcode_names); i++){
@@ -586,6 +639,14 @@ void test_after_enter(stack_frame * frame, void * userdata){
       logd(" %f", t.m11);
       logd(" %f", t.m22);
       break;
+    }
+  case BINUI_ROTATE:
+    {
+      vec4 t = rotate_3d_current(ctx->ctx);
+      logd(" %f", t.x);
+      logd(" %f", t.y);
+      logd(" %f", t.z);
+      logd(" %f", t.w);
     }
   }
 

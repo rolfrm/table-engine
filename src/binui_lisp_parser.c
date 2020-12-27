@@ -230,7 +230,16 @@ string_reader parse_sub(string_reader rd, io_writer * write){
     }
     
     rd_after = rd4;
-  }else if(opcode == BINUI_CANVAS || opcode == BINUI_RECTANGLE || opcode == BINUI_3D){
+  }else if(opcode == BINUI_ROTATE){
+    rd4 = skip_while(rd4, is_whitespace);
+    for(int i = 0; i < 4; i++){
+      f64 x = 0;
+      rd4 = read_f64(rd4, &name_buffer, &x);
+      io_write_f32(write, x);
+    }
+    rd_after = rd4;
+  }
+  else if(opcode == BINUI_CANVAS || opcode == BINUI_RECTANGLE || opcode == BINUI_3D){
     rd_after = rd4;
   }
 
@@ -348,7 +357,7 @@ void test_binui_lisp_loader(){
     logd("\nDone loading lisp (%i bytes)\n", writer.offset);
   }
   {
-    const char * target = "   \n (color #44332211 (color #55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 1.0 1.0 1.0 (translate 10 0 10)))))))) (color #1)";
+    const char * target = "   \n (color #44332211 (color #55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 1.0 1.0 1.0 (translate 10 0 10 (rotate 1 0 0 1.0))))))))) (color #1)";
     io_writer writer = {0};
     io_reader rd = io_from_bytes(target, strlen(target) + 1);
     binui_load_lisp(&rd, &writer);

@@ -12,12 +12,34 @@ typedef enum{
 	     BINUI_3D_POLYGON = 9,
 	     BINUI_TRANSLATE = 10,
 	     BINUI_SCALE = 11,
+	     BINUI_ROTATE = 12,
 	     BINUI_MAGIC = 0x5a,
 }binui_opcode;
 
 const char * binui_opcode_name(binui_opcode);
 binui_opcode binui_opcode_parse(const char * name);
 
+typedef enum{
+	     BINUI_INT8,
+	     BINUI_INT16,
+	     BINUI_INT32,
+	     BINUI_INT64,
+	     BINUI_INT64_LEB,
+	     BINUI_UINT64_LEB,
+	     BINUI_F32,
+	     BINUI_F64,
+	     BINUI_STRING,
+	     BINUI_TYPE_NONE
+	     
+}binui_type_signature;
+
+typedef struct _binui_stack_register binui_stack_register;
+
+
+typedef struct{
+  binui_stack_register * reg;
+  binui_type_signature signature;
+}binui_auto_type;
 
 typedef struct _binui_context binui_context;
 
@@ -25,7 +47,11 @@ typedef struct{
   void (* enter) (binui_context * ctx, io_reader * reader);
   void (* exit) (binui_context * ctx);
   bool has_children;
-  
+  binui_type_signature * type;
+
+  binui_auto_type * typesig;
+  u32 typesig_count;
+  binui_opcode opcode;
 }binui_opcode_handler;
 
 struct _binui_context {
@@ -46,18 +72,18 @@ typedef struct {
   u32 id;
 }binui_register;
 
-typedef struct {
+struct _binui_stack_register{
   u32 size;
   binui_register stack;
-}binui_stack_register;
+};
 
 void binui_init(binui_context * ctx);
-void binui_set_opcode_handler(int opcode, binui_context * ctx, binui_opcode_handler handler);
+void binui_set_opcode_handler(binui_opcode opcode, binui_context * ctx, binui_opcode_handler handler);
 void binui_iterate_internal( binui_context * reg, io_reader * reader);
 
-void binui_stack_register_push(binui_context * ctx, binui_stack_register * reg, void * value);
-void binui_stack_register_pop(binui_context * ctx, binui_stack_register * reg, void * value);
-bool binui_stack_register_top(binui_context * ctx, binui_stack_register * reg, void * value);
+void binui_stack_register_push(binui_context * ctx, binui_stack_register * reg, const void * value);
+void binui_stack_register_pop(binui_context * ctx, binui_stack_register * reg, void * out_value);
+bool binui_stack_register_top(binui_context * ctx, binui_stack_register * reg, void * out_value);
 
 void binui_iterate_internal(binui_context * reg, io_reader * reader);
 
@@ -101,3 +127,4 @@ typedef struct{
 binui_polygon binui_polygon_get(binui_context * ctx);
 
 mat4 transform_3d_current_set(binui_context * ctx);
+vec4 rotate_3d_current(binui_context  * ctx);

@@ -264,7 +264,7 @@ node_callback node_callback_get(binui_context * ctx){
 void enter_typesig(binui_context * reg, io_reader * reader, binui_auto_type * type){
   union{
     void * ptr;
-    
+    vec4 v4;
   }data;
   data.ptr = NULL;
   switch(type->signature){
@@ -274,6 +274,17 @@ void enter_typesig(binui_context * reg, io_reader * reader, binui_auto_type * ty
       data.ptr = io_read_strn(reader, &len);
       break;
     }
+  case BINUI_VEC4:
+    {
+      data.v4 = io_read_vec4(reader);
+      break;
+    }
+  case BINUI_TYPE_NONE:
+    {
+      return;
+    }
+    break;
+    
   default:
     ERROR("Cannot handle type\n");
   }
@@ -283,8 +294,9 @@ void enter_typesig(binui_context * reg, io_reader * reader, binui_auto_type * ty
 void exit_typesig(binui_context * reg, binui_auto_type * type){
   union{
     void * ptr;
+    vec4 v;
   }data;
-
+  if(type->signature == BINUI_TYPE_NONE) return;
   binui_stack_register_pop(reg, type->reg, &data);
   if(type->signature == BINUI_STRING){
     free(data.ptr);
@@ -640,16 +652,55 @@ void test_after_enter(stack_frame * frame, void * userdata){
       logd(" %f", t.m22);
       break;
     }
-  case BINUI_ROTATE:
-    {
-      vec4 t = rotate_3d_current(ctx->ctx);
-      logd(" %f", t.x);
-      logd(" %f", t.y);
-      logd(" %f", t.z);
-      logd(" %f", t.w);
-    }
+  default:{
+    var reg = ctx->ctx;
+    ASSERT(frame->opcode < reg->opcode_handler_count);
+    var handler = reg->opcode_handlers[frame->opcode];
+    for(u32 i = 0; i < handler.typesig_count; i++){
+      let typesig = handler.typesig[i];
+      switch(typesig.signature)
+	{
+	case BINUI_F32:
+	  {
+	    f32 t;
+	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	    logd(" %f", t);
+	  }
+	case BINUI_F64:
+	  {
+	    f64 t;
+	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	    logd(" %f", t);
+	  }
+	case BINUI_VEC2:
+	  {
+	    vec2 t;
+	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	    logd(" %f", t.x);
+	    logd(" %f", t.y);
+	  }
+	case BINUI_VEC3:
+	  {
+	    vec3 t;
+	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	    logd(" %f", t.x);
+	    logd(" %f", t.y);
+	    logd(" %f", t.z);
+	  }
+	case BINUI_VEC4:
+	  {
+	    vec4 t;
+	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	    logd(" %f", t.x);
+	    logd(" %f", t.y);
+	    logd(" %f", t.z);
+	    logd(" %f", t.w);
+	  }
+	}
+     }
   }
-
+  }
+  
   
   ctx->stack_level += 1;
 }

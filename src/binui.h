@@ -29,6 +29,11 @@ typedef enum{
 	     BINUI_F32,
 	     BINUI_F64,
 	     BINUI_STRING,
+	     BINUI_VEC2,
+	     BINUI_VEC3,
+	     BINUI_VEC4,
+	     BINUI_MAT3,
+	     BINUI_MAT4,
 	     BINUI_TYPE_NONE
 	     
 }binui_type_signature;
@@ -114,6 +119,7 @@ void node_callback_pop(binui_context * ctx);
 void binui_3d_init(binui_context * ctx);
 
 mat4 io_read_mat4(io_reader * rd);
+vec4 io_read_vec4(io_reader * rd);
 void io_write_mat4(io_writer * wd, mat4 m);
 
 

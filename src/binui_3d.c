@@ -91,11 +91,11 @@ void scale_3d_exit(binui_context * ctx){
 }
 
 void rotate_3d_enter(binui_context * ctx, io_reader * reader){
-  let vec = io_read_vec4(reader);
+  vec4 vec;
+  ASSERT(binui_stack_register_top(ctx, &rotate_register, &vec));
   var m = mat4_identity();
   m = mat4_rotate(m, vec.x, vec.y, vec.z, vec.w);
   transform_3d_push(ctx, m);
-  binui_stack_register_push(ctx, &rotate_register, &vec);
 }
 
 vec4 rotate_3d_current(binui_context  * ctx){
@@ -107,8 +107,6 @@ vec4 rotate_3d_current(binui_context  * ctx){
 
 void rotate_3d_exit(binui_context * ctx){
   transform_3d_pop(ctx);
-  binui_stack_register_pop(ctx, &rotate_register, NULL);
-  
 }
 
 binui_stack_register polygon_3d_register ={.size =sizeof(binui_polygon), .stack = {0}};
@@ -208,9 +206,16 @@ void binui_3d_init(binui_context * ctx){
   h.has_children = true;
   binui_set_opcode_handler(BINUI_SCALE, ctx, h);
 
-
-  h.enter = rotate_3d_enter;
-  h.exit = rotate_3d_exit;
-  h.has_children = true;
-  binui_set_opcode_handler(BINUI_ROTATE, ctx, h);
+  {
+    static binui_opcode_handler h;
+    static binui_auto_type type;
+    type.signature = BINUI_VEC4;
+    type.reg = &rotate_register;
+    h.typesig = &type;
+    h.typesig_count = 1;
+    h.enter = rotate_3d_enter;
+    h.exit = rotate_3d_exit;
+    h.has_children = true;
+    binui_set_opcode_handler(BINUI_ROTATE, ctx, h);
+  }
 }

@@ -5,6 +5,7 @@
 
 
 binui_stack_register transform_3d_register ={.size =sizeof(mat4), .stack = {0}};
+binui_stack_register set_transform_3d_register ={.size =sizeof(mat4), .stack = {0}};
 
 mat4 io_read_mat4(io_reader * rd){
   mat4 m;
@@ -12,31 +13,75 @@ mat4 io_read_mat4(io_reader * rd){
   return m;
 }
 
+vec3 io_read_vec3(io_reader * rd){
+  vec3 m;
+  io_read(rd, &m.x, sizeof(m.x));
+  io_read(rd, &m.y, sizeof(m.y));
+  io_read(rd, &m.z, sizeof(m.z));
+  return m;
+}
+
 void io_write_mat4(io_writer * wd, mat4 m){
   io_write(wd, &m, sizeof(m));
 }
 
-
-void transform_3d_enter(binui_context * ctx, io_reader * reader){
+void transform_3d_push(binui_context * ctx, mat4 m){
   mat4 current;
   if(!binui_stack_register_top(ctx, &transform_3d_register, &current)){
     current = mat4_identity();
   }
-  mat4 new = io_read_mat4(reader);
-  current = mat4_mul(current, new);
+  current = mat4_mul(current, m);
   binui_stack_register_push(ctx, &transform_3d_register, &current);
+  binui_stack_register_push(ctx, &set_transform_3d_register, &m);
+
 }
 
-void transform_3d_exit(binui_context * ctx){
-  binui_stack_register_top(ctx, &transform_3d_register, NULL);
+void transform_3d_pop(binui_context * ctx){
+  binui_stack_register_pop(ctx, &transform_3d_register, NULL);
+  binui_stack_register_pop(ctx, &set_transform_3d_register, NULL);
+
 }
 
 mat4 transform_3d_current(binui_context * ctx){
   mat4 current;
-  binui_stack_register_pop(ctx, &transform_3d_register, &current);
+  binui_stack_register_top(ctx, &transform_3d_register, &current);
   return current;
 }
 
+
+mat4 transform_3d_current_set(binui_context * ctx){
+  mat4 current;
+  binui_stack_register_top(ctx, &set_transform_3d_register, &current);
+  return current;
+}
+
+
+void transform_3d_enter(binui_context * ctx, io_reader * reader){
+  mat4 new = io_read_mat4(reader);
+  transform_3d_push(ctx, new);
+}
+
+void transform_3d_exit(binui_context * ctx){
+  transform_3d_pop(ctx);
+}
+
+void translate_3d_enter(binui_context * ctx, io_reader * reader){
+  let vec = io_read_vec3(reader);
+  transform_3d_push(ctx, mat4_translate(vec.x, vec.y, vec.z));
+}
+
+void translate_3d_exit(binui_context * ctx){
+  transform_3d_pop(ctx);
+}
+
+void scale_3d_enter(binui_context * ctx, io_reader * reader){
+  let vec = io_read_vec3(reader);
+  transform_3d_push(ctx, mat4_scaled(vec.x, vec.y, vec.z));
+}
+
+void scale_3d_exit(binui_context * ctx){
+  transform_3d_pop(ctx);
+}
 
 binui_stack_register polygon_3d_register ={.size =sizeof(binui_polygon), .stack = {0}};
 
@@ -125,5 +170,13 @@ void binui_3d_init(binui_context * ctx){
   h.has_children = true;
   binui_set_opcode_handler(BINUI_3D, ctx, h);
 
-  
+  h.enter = translate_3d_enter;
+  h.exit = translate_3d_exit;
+  h.has_children = true;
+  binui_set_opcode_handler(BINUI_TRANSLATE, ctx, h);
+
+  h.enter = scale_3d_enter;
+  h.exit = scale_3d_exit;
+  h.has_children = true;
+  binui_set_opcode_handler(BINUI_SCALE, ctx, h);
 }

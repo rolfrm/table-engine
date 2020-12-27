@@ -10,6 +10,8 @@ typedef enum{
 	     BINUI_3D = 7,
 	     BINUI_3D_TRANSFORM = 8,
 	     BINUI_3D_POLYGON = 9,
+	     BINUI_TRANSLATE = 10,
+	     BINUI_SCALE = 11,
 	     BINUI_MAGIC = 0x5a,
 }binui_opcode;
 
@@ -97,3 +99,5 @@ typedef struct{
 }binui_polygon;
 
 binui_polygon binui_polygon_get(binui_context * ctx);
+
+mat4 transform_3d_current_set(binui_context * ctx);

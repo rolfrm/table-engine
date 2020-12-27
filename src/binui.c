@@ -385,6 +385,8 @@ void binui_init_lookup(hash_table ** _opcode2name, hash_table ** _name2opcode){
      {.opcode = BINUI_3D, .name = "3d"},
      {.opcode = BINUI_3D_TRANSFORM, .name = "transform"},
      {.opcode = BINUI_3D_POLYGON, .name = "polygon"},
+     {.opcode = BINUI_TRANSLATE, .name = "translate"},
+     {.opcode = BINUI_SCALE, .name = "scale"}
     };
 
   for(size_t i = 0; i < array_count(opcode_names); i++){
@@ -567,6 +569,23 @@ void test_after_enter(stack_frame * frame, void * userdata){
       u32 color;
       binui_get_color(ctx->ctx, &color);
       logd(" #%x", color);
+      break;
+    }
+  case BINUI_TRANSLATE:
+    {
+      mat4 t = transform_3d_current_set(ctx->ctx);
+      logd(" %f", t.m30);
+      logd(" %f", t.m31);
+      logd(" %f", t.m32);
+      break;
+    }
+  case BINUI_SCALE:
+    {
+      mat4 t = transform_3d_current_set(ctx->ctx);
+      logd(" %f", t.m00);
+      logd(" %f", t.m11);
+      logd(" %f", t.m22);
+      break;
     }
   }
 

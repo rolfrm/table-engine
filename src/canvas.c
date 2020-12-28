@@ -21,11 +21,10 @@ u64_table * canvas_contexts;
 typedef struct {
   blit3d_context * blit3d;
   io_writer wd;
-  binui_context binui;
+  binui_context * binui;
 }canvas_context;
 
 u64 canvas_class;
-static u32 camera_loc, color_loc, vertex_loc, depth_loc;
 
 model * get_or_create_polygon(u64 polygon){
   u64 ptr;
@@ -65,7 +64,7 @@ canvas_context * canvas_get_context(u64 canvas){
   u64 ptr;
   if(!u64_table_try_get(canvas_contexts, &canvas, &ptr)){
     canvas_context * ctx = alloc0(sizeof(canvas_context));
-    binui_init(&ctx->binui);
+    ctx->binui = binui_new();
  
     binui_test_load(&ctx->wd);
     
@@ -82,16 +81,14 @@ static void blit_rectangle3(binui_stack_frame * frame, void * userdata){
   var ctx = (canvas_context *) userdata;
   if(ctx == NULL) return;
   
-  var opcode = ctx->binui.current_opcode;
+  var opcode = binui_current_opcode(ctx->binui);
 
-  switch(opcode){
-  case BINUI_3D_POLYGON:
-  case BINUI_RECTANGLE:
-    break;
-  default: return;
-  }
+  binui_opcode BINUI_3D_POLYGON = binui_opcode_parse(ctx->binui, "polygon");
+  binui_opcode BINUI_RECTANGLE = binui_opcode_parse(ctx->binui, "rectangle");
+  if(opcode != BINUI_3D_POLYGON && opcode != BINUI_RECTANGLE)
+    return;
   u32 color;
-  binui_get_color(&ctx->binui, &color);
+  binui_get_color(ctx->binui, &color);
   f32 r,g,b,a;
   r = (color & 0xFF) * (1.0 / 255.0); 
   g = ((color >> 8) & 0xFF) * (1.0 / 255.0);
@@ -100,10 +97,10 @@ static void blit_rectangle3(binui_stack_frame * frame, void * userdata){
   
   
   if(opcode == BINUI_3D_POLYGON){
-    binui_polygon poly = binui_polygon_get(&ctx->binui);
+    binui_polygon poly = binui_polygon_get(ctx->binui);
     blit3d_polygon * p = blit3d_polygon_new();
     blit3d_polygon_load_data(p, poly.data, poly.count * poly.dim * sizeof(f32));
-    //blit3d_color(&ctx->binui, vec4_new(r,g,b,a));
+    //blit3d_color(ctx->binui, vec4_new(r,g,b,a));
     
 
     logd("Render polygon %i!\n", poly.count);
@@ -113,13 +110,13 @@ static void blit_rectangle3(binui_stack_frame * frame, void * userdata){
     return;
   }
   
-  if(ctx->binui.current_opcode != BINUI_RECTANGLE) return;
+  if(opcode != BINUI_RECTANGLE) return;
   
   vec2i p;
-  binui_get_position(&ctx->binui, &p);
+  binui_get_position(ctx->binui, &p);
 
   vec2i s;
-  binui_get_size(&ctx->binui, &s);
+  binui_get_size(ctx->binui, &s);
   blit_rectangle(p.x, p.y, s.x, s.y, r,g,b,a);
   
 }
@@ -151,14 +148,14 @@ void render_canvas(u64 canvas){
     .userdata = ctx
   };
 
-  node_callback_push(&ctx->binui, render);
+  node_callback_push(ctx->binui, render);
   
   io_reset(&ctx->wd);
   blit_push();
   blit_begin(BLIT_MODE_PIXEL);
-  binui_iterate(&ctx->binui, &ctx->wd);
+  binui_iterate(ctx->binui, &ctx->wd);
   blit_pop();		
-  node_callback_pop(&ctx->binui);
+  node_callback_pop(ctx->binui);
 }
 
 void canvas_init(){

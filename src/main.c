@@ -53,7 +53,7 @@ static void init_load(){
     u64 key = modules->key[i + 1];
     if(!is_loaded(key)){
       string_table_indexes idx = modules->value[i + 1];
-      char * name = module_names->data + idx.index;
+      var name = (char *) module_names->data + idx.index;
       printf("Autoloading %s\n", name);
       load_module(name);
     }

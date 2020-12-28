@@ -121,7 +121,7 @@ void handle_command_entered(u64 console, char * command, u32 length){
   cmd[length] = 0;
   var cmd2 = fmtstr("Executed> %s", cmd);
   console_push_history(console, cmd2);
-  parse_command(console, cmd);
+  parse_command(console, (char *) cmd);
   dealloc(cmd2);
 }
 

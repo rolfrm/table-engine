@@ -14,7 +14,28 @@
 
 #include "binui.h"
 
+
 typedef binui_stack_frame stack_frame;
+
+
+
+struct _binui_context {
+  void * registers;
+  u64 reg_ptr;
+  u64 reg_cap;
+
+  binui_opcodedef * opcodedefs;
+  
+  size_t opcodedef_count;
+
+  binui_opcode current_opcode;
+
+  hash_table * opcode_names;
+
+  stack_frame * stack;
+  size_t stack_capacity;
+  
+};
 
 
 extern io_writer * binui_stdout;
@@ -28,12 +49,6 @@ void memset(void *, int chr, unsigned long );
 io_writer * binui_stdout;
 
 const u8 BINUI_OPCODE_VLEN = 255;
-
-
-void binui_load(binui_context * ctx, io_reader * rd){
-
-}
-
 
 // registers
 const int BINUI_MAX_STACK_SIZE = 1024;
@@ -79,9 +94,11 @@ void * binui_get_register(binui_context * ctx, binui_register * registerID){
     ctx->registers = realloc(ctx->registers, new_size);
     // set all new registers to 0.
     memset(ctx->registers + ctx->reg_cap, 0, new_size - ctx->reg_cap);
+    
     ctx->reg_cap = new_size;
   }
-
+  
+  //logd("new size: %i %i\n", ctx->reg_cap, register_counter);
   // this assert is for catching possibily errors early. New registers should not be created very often.
   // in the future remove this.
   ASSERT(ctx->reg_cap < 10000); 
@@ -117,7 +134,7 @@ void push_color(binui_context * ctx, u32 color){
 
 u32 pop_color(binui_context * ctx){
   u32 color;
-  binui_stack_register_push(ctx, &color_register, &color);
+  binui_stack_register_pop(ctx, &color_register, &color);
   return color;
 }
 
@@ -131,36 +148,25 @@ void binui_get_color(binui_context * ctx, u32 *color){
   *color = get_color(ctx);
 }
 
-void color_enter(binui_context * ctx, io_reader * reader){
-  u32 color = io_read_u32(reader);
-  push_color(ctx, color);
+void color_enter(binui_context * ctx){
+
 }
 
 void color_exit(binui_context * ctx){
-  pop_color(ctx);
+
 }
 
-binui_stack_register position_reg = {.size = sizeof(vec2i), .stack = {0}};
-binui_stack_register set_position_reg = {.size = sizeof(vec2i), .stack = {0}};
+static binui_stack_register position_reg ={.size =sizeof(vec2), .stack = {0}};
 
-void position_get(binui_context * ctx, vec2i * get){
-  if(!binui_stack_register_top(ctx, &position_reg, get)){
-    *get = vec2i_zero;
+vec2 position_get(binui_context * ctx){
+  vec2 get;
+  if(!binui_stack_register_top(ctx, &position_reg, &get)){
+    return vec2_zero;
   }
-}
-
-void binui_get_set_position(binui_context * reg, vec2i * get){
-  if(!binui_stack_register_top(reg, &set_position_reg, get)){
-    *get = vec2i_zero;
-  }
-}
-
-void binui_get_position(binui_context * ctx, vec2i *v){
-  position_get(ctx, v);
+  return get;
 }
 
 void position_push(binui_context * ctx, vec2i pos){
-  binui_stack_register_push(ctx, &set_position_reg, &pos);
   vec2i pos0 = {0};
   binui_stack_register_top(ctx, &position_reg, &pos0);
   pos = vec2i_add(pos, pos0);
@@ -169,17 +175,12 @@ void position_push(binui_context * ctx, vec2i pos){
 
 void position_pop(binui_context * ctx){
   binui_stack_register_pop(ctx, &position_reg, NULL);
-  binui_stack_register_pop(ctx, &set_position_reg, NULL);
 }
 
-void position_enter(binui_context * ctx, io_reader * reader){
-  i32 x = io_read_i32_leb(reader);
-  i32 y = io_read_i32_leb(reader);
-  position_push(ctx, vec2i_new(x, y));
+void position_enter(binui_context * ctx){
 }
 
 void position_exit(binui_context * ctx){
-  position_pop(ctx);
 }
 
 binui_stack_register size_reg = {.size = sizeof(vec2i), .stack = {0}};
@@ -197,16 +198,12 @@ void size_pop(binui_context * ctx){
   binui_stack_register_pop(ctx, &size_reg, NULL);
 }
 
-void size_enter(binui_context * ctx, io_reader * reader){
-  i32 x  = io_read_i32_leb(reader);
-  i32 y  = io_read_i32_leb(reader);
-  size_push(ctx, vec2i_new(x, y));
+void size_enter(binui_context * ctx){
 }
 
 void size_exit(binui_context * ctx){
-  size_pop(ctx);
-}
 
+}
 void binui_get_size(binui_context * ctx, vec2i * get){
   size_get(ctx, get);
 }
@@ -219,31 +216,59 @@ char * get_module_name(binui_context * ctx){
   return NULL;
 }
 
-void module_enter(binui_context * ctx, io_reader *reader){
+void module_enter(binui_context * ctx){
   char * mod = get_module_name(ctx);
   logd("MODULE: %s\n", mod);
 }
 
-void rectangle_enter(binui_context * ctx, io_reader * reader){
+void rectangle_enter(binui_context * ctx){
   
-  UNUSED(reader);
 }
 
-void canvas_enter(binui_context * ctx, io_reader * reader){
-  UNUSED(reader);
+void canvas_enter(binui_context * ctx){
 }
 
-void binui_set_opcode_handler(binui_opcode opcode, binui_context * ctx, binui_opcode_handler handler){
+void _binui_set_opcodedef(binui_opcode opcode, binui_context * ctx, binui_opcodedef handler){
   handler.opcode = opcode;
-  if(ctx->opcode_handler_count <= opcode){
-    ctx->opcode_handlers = realloc(ctx->opcode_handlers, sizeof(handler) * (opcode + 1));
+  if(ctx->opcodedef_count <= opcode){
+    ctx->opcodedefs = realloc(ctx->opcodedefs, sizeof(handler) * (opcode + 1));
     
-    for(int i = ctx->opcode_handler_count; i <= opcode; i++){
-      ctx->opcode_handlers[i] = (binui_opcode_handler){0};
+    for(int i = ctx->opcodedef_count; i <= opcode; i++){
+      ctx->opcodedefs[i] = (binui_opcodedef){0};
     }
-    ctx->opcode_handler_count = opcode + 1;
+    ctx->opcodedef_count = opcode + 1;
   }
-  ctx->opcode_handlers[opcode] = handler;
+  ctx->opcodedefs[opcode] = handler;
+}
+
+void binui_load_opcode(binui_context * ctx, const char * name, const binui_auto_type * type, size_t type_count, void (* enter) (binui_context * ctx), void (* exit) (binui_context * ctx), bool children){
+  
+    
+    if(ht_get(ctx->opcode_names, &name, NULL)){
+      ERROR("Opcode '%s' is already defined\n", name);
+      return;
+    }
+    u32 newid = ctx->opcodedef_count;
+    ht_set(ctx->opcode_names, &name, &newid);
+    binui_opcodedef h;
+    h.opcode_name = name;
+    h.has_children = children;
+    h.enter = enter;
+    h.exit = exit;
+    h.typesig = type;
+    h.typesig_count = type_count;
+    h.opcode = newid;
+      
+    _binui_set_opcodedef(newid, ctx, h);
+}
+
+binui_opcodedef binui_get_opcodedef(binui_context * ctx, binui_opcode opcode){
+  ASSERT(opcode < ctx->opcodedef_count);
+  return ctx->opcodedefs[opcode];   
+}
+
+binui_opcode binui_current_opcode(binui_context * ctx){
+  return ctx->current_opcode;
 }
 
 binui_stack_register node_callback_reg = {.size = sizeof(node_callback), .stack = {0}};
@@ -261,10 +286,15 @@ node_callback node_callback_get(binui_context * ctx){
   binui_stack_register_top(ctx, &node_callback_reg, &callback);
   return callback;
 }
-void enter_typesig(binui_context * reg, io_reader * reader, binui_auto_type * type){
+void enter_typesig(binui_context * reg, io_reader * reader, const binui_auto_type * type){
   union{
     void * ptr;
     vec4 v4;
+    vec3 v3;
+    vec2 v2;
+    f32 f;
+    f64 f2;
+    u32 u;
   }data;
   data.ptr = NULL;
   switch(type->signature){
@@ -272,6 +302,18 @@ void enter_typesig(binui_context * reg, io_reader * reader, binui_auto_type * ty
     {
       u32 len = 0;
       data.ptr = io_read_strn(reader, &len);
+      data.ptr = realloc(data.ptr, len + 1);
+      ((char*) data.ptr)[len] = 0;
+      break;
+    }
+  case BINUI_VEC2:
+    {
+      data.v2 = io_read_vec2(reader);
+      break;
+    }
+  case BINUI_VEC3:
+    {
+      data.v3 = io_read_vec3(reader);
       break;
     }
   case BINUI_VEC4:
@@ -279,9 +321,24 @@ void enter_typesig(binui_context * reg, io_reader * reader, binui_auto_type * ty
       data.v4 = io_read_vec4(reader);
       break;
     }
+  case BINUI_F32:
+    {
+      data.f = io_read_f32(reader);
+      break;
+    }
+  case BINUI_F64:
+    {
+      data.f = io_read_f64(reader);
+      break;
+    }
   case BINUI_TYPE_NONE:
     {
       return;
+    }
+  case BINUI_UINT32:
+    {
+      data.u = io_read_u32(reader);
+      break;
     }
     break;
     
@@ -291,40 +348,51 @@ void enter_typesig(binui_context * reg, io_reader * reader, binui_auto_type * ty
   binui_stack_register_push(reg, type->reg, &data);
 }
 
-void exit_typesig(binui_context * reg, binui_auto_type * type){
-  union{
-    void * ptr;
-    vec4 v;
-  }data;
+void exit_typesig(binui_context * reg, const binui_auto_type * type){
+  
   if(type->signature == BINUI_TYPE_NONE) return;
-  binui_stack_register_pop(reg, type->reg, &data);
   if(type->signature == BINUI_STRING){
-    free(data.ptr);
+    void * data;
+    binui_stack_register_pop(reg, type->reg, &data);
+  
+    free(data);
+  }else{
+    binui_stack_register_pop(reg, type->reg, NULL);  
   }
 }
 
 void binui_iterate_internal(binui_context * reg, io_reader * reader){
-  ASSERT(reg->inited == true);
+  
+  stack_frame ** frames = &reg->stack;
+  size_t * stack_capacity = &reg->stack_capacity;
 
-  stack_frame frames[BINUI_MAX_STACK_SIZE];
-  stack_frame * frame = &frames[0];
-    
+  stack_frame * frame = *frames; // select the first frame.
+  stack_frame * end_frame = *frames + *stack_capacity;
   while(true){
+
+    if(frame == end_frame){
+      *stack_capacity = *stack_capacity == 0 ? 64 : *stack_capacity * 2;
+      *frames = realloc(*frames, sizeof(*frame) * *stack_capacity);
+      frame = *frames + (end_frame - frame);
+      end_frame = *frames + *stack_capacity;
+    }
     *frame = (stack_frame){0};
+    
     frame->node_id = reader->offset;
     reg->current_opcode = frame->opcode = io_read_u64_leb(reader);
     
-    if(frame->opcode == BINUI_OPCODE_NONE)
+    if(frame->opcode == BINUI_OPCODE_NONE){
+      logd("done \n");
       break;
+    }
     
-    
-    if(reg->opcode_handler_count > frame->opcode){
-      var handler = reg->opcode_handlers[frame->opcode];
+    if(reg->opcodedef_count > frame->opcode){
+      var handler = reg->opcodedefs[frame->opcode];
       for(u32 i = 0; i < handler.typesig_count; i++){
 	enter_typesig(reg, reader, handler.typesig + i);
       }
       if(handler.enter != NULL){
-	handler.enter(reg, reader);
+	handler.enter(reg);
 	if(handler.has_children){
 	  frame->child_count = io_read_u64_leb(reader);
 	}
@@ -352,7 +420,7 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
       }
       else
 	{
-	var handler = reg->opcode_handlers[frame->opcode];
+	var handler = reg->opcodedefs[frame->opcode];
 	var cb = node_callback_get(reg);
 	if(cb.before_exit != NULL){
 	  cb.before_exit(frame, cb.userdata);
@@ -365,7 +433,7 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
 	if(handler.exit != NULL){
 	  handler.exit(reg);
 	}
-	if(frame == &frames[0])
+	if(frame == &(*frames)[0])
 	  break;
 	frame = frame - 1;
 	frame->child_count -= 1;
@@ -375,46 +443,42 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
 }
 
 void binui_3d_init(binui_context * ctx);
-void binui_init(binui_context * ctx){
-  memset(ctx, 0, sizeof(ctx[0]));
-  ctx->inited = true;
+binui_context * binui_new(){
+  binui_context * ctx = alloc0(sizeof(*ctx));
+  ctx->opcode_names = ht_create_strkey(sizeof(u32));
   {
-    static binui_opcode_handler h = {0};
     static binui_auto_type type;
     type.signature = BINUI_STRING;
     type.reg = &module_name_register;
-    h.typesig = &type;
-    h.typesig_count = 1;
-    h.enter = module_enter;
-    h.opcode = BINUI_IMPORT_MODULE;
-    h.has_children = false;
-    binui_set_opcode_handler(BINUI_IMPORT_MODULE, ctx, h);
+    binui_load_opcode(ctx, "import", &type, 1, module_enter, NULL, false);
   }
   
-  binui_opcode_handler h = {0};
+  {
+    static binui_auto_type type;
+    type.signature = BINUI_UINT32;
+    type.reg = &color_register;
+    binui_load_opcode(ctx, "color", &type, 1, color_enter, color_exit, true);
+  }
+  {
+    static binui_auto_type type;
+    type.signature = BINUI_VEC2;
+    type.reg = &size_reg;
+    binui_load_opcode(ctx, "size", &type, 1, size_enter, size_exit, true);
+  }
 
-  h.enter = color_enter;
-  h.exit = color_exit;
-  h.has_children = true;
-  binui_set_opcode_handler(BINUI_COLOR, ctx, h);
+  {
+    static binui_auto_type type;
+    type.signature = BINUI_VEC2;
+    type.reg = &position_reg;
+    binui_load_opcode(ctx, "position", &type, 1, position_enter, position_exit, true);
+  }
+  {
+    binui_load_opcode(ctx, "canvas", NULL, 0, canvas_enter, NULL, true);
+    binui_load_opcode(ctx, "rectangle", NULL, 0, canvas_enter, NULL, false);
+  }
 
-  h.enter = size_enter;
-  h.exit = size_exit;
-  binui_set_opcode_handler(BINUI_SIZE, ctx, h);
-
-  h.enter = position_enter;
-  h.exit = position_exit;
-  binui_set_opcode_handler(BINUI_POSITION, ctx, h);
-
-  h.enter = canvas_enter;
-  h.exit = NULL;
-  binui_set_opcode_handler(BINUI_CANVAS, ctx, h);
-
-  h.enter = rectangle_enter;
-  h.has_children = false;
-  binui_set_opcode_handler(BINUI_RECTANGLE, ctx, h);
-
-  binui_3d_init(ctx);  
+  binui_3d_init(ctx);
+  return ctx;
 }
 
 typedef struct{
@@ -422,6 +486,7 @@ typedef struct{
   const char * name;
 }binui_opcode_name2;
 
+/*
 void binui_init_lookup(hash_table ** _opcode2name, hash_table ** _name2opcode){
 
   static hash_table * opcode2name;
@@ -461,24 +526,19 @@ void binui_init_lookup(hash_table ** _opcode2name, hash_table ** _name2opcode){
   }
   binui_init_lookup(_opcode2name, _name2opcode);
 }
+*/
 
-
-const char * binui_opcode_name(binui_opcode opcode){
-  hash_table * opcode2name;
-  binui_init_lookup(&opcode2name, NULL);
-  const char * name = NULL;
-  if(!ht_get(opcode2name, &opcode, &name)){
+const char * binui_opcode_name(binui_context * ctx, binui_opcode opcode){
+  if(opcode >= ctx->opcodedef_count){
     ERROR("Unrecognized opcode %i\n", opcode);
     return NULL;
   }
-  return name;
+  return ctx->opcodedefs[opcode].opcode_name;
 }
 
-binui_opcode binui_opcode_parse(const char * name){
-  hash_table * name2opcode;
-  binui_init_lookup(NULL, &name2opcode);
+binui_opcode binui_opcode_parse(binui_context * ctx, const char * name){
   binui_opcode opcode;
-  if(!ht_get(name2opcode, &name, &opcode)){
+  if(!ht_get(ctx->opcode_names, &name, &opcode)){
     return BINUI_OPCODE_NONE;
   }
   
@@ -494,10 +554,23 @@ void binui_iterate(binui_context * reg, io_reader * reader){
   binui_iterate_internal(reg, reader);
 }
 
-void binui_test_load(io_writer * wd){
- io_write_u32_leb(wd, BINUI_IMPORT_MODULE);
+void binui_test_load(binui_context * ctx, io_writer * wd){
+  binui_opcode BINUI_IMPORT_MODULE = binui_opcode_parse(ctx, "import");
+  
+  binui_opcode BINUI_CANVAS = binui_opcode_parse(ctx, "canvas");
+  
+  binui_opcode BINUI_POSITION = binui_opcode_parse(ctx, "position");
+  binui_opcode BINUI_COLOR = binui_opcode_parse(ctx, "color");
+  binui_opcode BINUI_SIZE = binui_opcode_parse(ctx, "size");
+  binui_opcode BINUI_RECTANGLE = binui_opcode_parse(ctx, "rectangle");
+  binui_opcode BINUI_3D_POLYGON = binui_opcode_parse(ctx, "polygon");
+  binui_opcode BINUI_3D = binui_opcode_parse(ctx, "3d");
+ 
 
-  const char * modname = "graphics";
+  io_write_u32_leb(wd, BINUI_IMPORT_MODULE);
+ 
+
+ const char * modname = "graphics";
   io_write_strn(wd, modname);
   io_write_u32_leb(wd, BINUI_MAGIC);
 
@@ -575,13 +648,6 @@ void binui_test_load(io_writer * wd){
   
   io_write_u32_leb(wd, 1);
   io_write_u32_leb(wd, BINUI_MAGIC);
-
-  io_write_u32_leb(wd, BINUI_3D_TRANSFORM);
-
-  mat4 t = mat4_translate(1,1,1);
-  io_write_mat4(wd, t);
-  io_write_u32_leb(wd, 1);
-  io_write_u32_leb(wd, BINUI_MAGIC);
   
   io_write_u32_leb(wd, BINUI_3D_POLYGON);
   io_write_u32_leb(wd, 4); // vertexes
@@ -613,94 +679,75 @@ void test_after_enter(stack_frame * frame, void * userdata){
   ctx->prev_enter = true;
   for(int i = 0; i < ctx->stack_level; i++)
     logd(" ");
-  logd("(%s", binui_opcode_name(ctx->ctx->current_opcode));
-  switch(frame->opcode){
-  case BINUI_POSITION:
-    {
-      vec2i pos;
-      binui_get_set_position(ctx->ctx, &pos);
-      logd(" %i %i",pos.x, pos.y);
-      break;
-    }
-  case BINUI_SIZE:
-    {
-      vec2i size;
-      size_get(ctx->ctx, &size);
-      logd(" %i %i",size.x, size.y);
-      break;
-    }
-  case BINUI_COLOR:
-    {
-      u32 color;
-      binui_get_color(ctx->ctx, &color);
-      logd(" #%x", color);
-      break;
-    }
-  case BINUI_TRANSLATE:
-    {
-      mat4 t = transform_3d_current_set(ctx->ctx);
-      logd(" %f", t.m30);
-      logd(" %f", t.m31);
-      logd(" %f", t.m32);
-      break;
-    }
-  case BINUI_SCALE:
-    {
-      mat4 t = transform_3d_current_set(ctx->ctx);
-      logd(" %f", t.m00);
-      logd(" %f", t.m11);
-      logd(" %f", t.m22);
-      break;
-    }
-  default:{
-    var reg = ctx->ctx;
-    ASSERT(frame->opcode < reg->opcode_handler_count);
-    var handler = reg->opcode_handlers[frame->opcode];
-    for(u32 i = 0; i < handler.typesig_count; i++){
-      let typesig = handler.typesig[i];
-      switch(typesig.signature)
+  logd("(%s", binui_opcode_name(ctx->ctx, ctx->ctx->current_opcode));
+  var reg = ctx->ctx;
+  ASSERT(frame->opcode < reg->opcodedef_count);
+  var handler = reg->opcodedefs[frame->opcode];
+  for(u32 i = 0; i < handler.typesig_count; i++){
+    let typesig = handler.typesig[i];
+    switch(typesig.signature)
+      {
+      case BINUI_STRING:
 	{
-	case BINUI_F32:
-	  {
-	    f32 t;
-	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	    logd(" %f", t);
-	  }
-	case BINUI_F64:
-	  {
-	    f64 t;
-	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	    logd(" %f", t);
-	  }
-	case BINUI_VEC2:
-	  {
-	    vec2 t;
-	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	    logd(" %f", t.x);
-	    logd(" %f", t.y);
-	  }
-	case BINUI_VEC3:
-	  {
-	    vec3 t;
-	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	    logd(" %f", t.x);
-	    logd(" %f", t.y);
-	    logd(" %f", t.z);
-	  }
-	case BINUI_VEC4:
-	  {
-	    vec4 t;
-	    ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	    logd(" %f", t.x);
-	    logd(" %f", t.y);
-	    logd(" %f", t.z);
-	    logd(" %f", t.w);
-	  }
+	  char * t;
+	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	  logd(" %s", t);
+	  break;
 	}
-     }
+      case BINUI_F32:
+	{
+	  f32 t;
+	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	  logd(" %f", t);
+	  break;
+	}
+      case BINUI_F64:
+	{
+	  f64 t;
+	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	  logd(" %f", t);
+	  break;
+	}
+      case BINUI_VEC2:
+	{
+	  vec2 t;
+	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	  logd(" %f", t.x);
+	  logd(" %f", t.y);
+	  break;
+	}
+      case BINUI_VEC3:
+	{
+	  vec3 t;
+	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	  logd(" %f", t.x);
+	  logd(" %f", t.y);
+	  logd(" %f", t.z);
+	  break;
+	}
+      case BINUI_VEC4:
+	{
+	  vec4 t;
+	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	  logd(" %f", t.x);
+	  logd(" %f", t.y);
+	  logd(" %f", t.z);
+	  logd(" %f", t.w);
+	  break;
+	}
+      case BINUI_UINT32:
+	{
+	  u32 t;
+	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
+	  logd(" 0x%x", t);
+	  break;
+	}
+
+      default:
+	ERROR("UNSUPPORTED\n");
+	break;
+      }
   }
-  }
-  
   
   ctx->stack_level += 1;
 }
@@ -720,26 +767,27 @@ void test_before_exit(stack_frame * frame, void * userdata){
 }
 void test_binui_load_lisp();
 io_reader io_from_bytes(const void * bytes, size_t size);
-void test_write_lisp(void * buffer, size_t size){
+void test_write_lisp(binui_context * reg, void * buffer, size_t size){
   
-  binui_context reg;
-  binui_init(&reg);
-  test_render_context rctx = {.ctx = &reg, .stack_level = 0};
+  
+  test_render_context rctx = {.ctx = reg, .stack_level = 0};
   
   node_callback cb = {.after_enter = test_after_enter,
 		      .before_exit = test_before_exit,
 		      .userdata = &rctx};
-  node_callback_push(&reg, cb);
+  node_callback_push(reg, cb);
   
   io_reader rd = io_from_bytes(buffer, size);
-  binui_iterate(&reg, &rd);
+  binui_iterate(reg, &rd);
   logd("\n");
   
 }
 
 
 void binui_test(){
-
+ test_binui_load_lisp();  
+ return;
+ /*
   binui_context reg;
   binui_init(&reg);
   test_render_context rctx = {.ctx = &reg, .stack_level = 0};
@@ -752,8 +800,13 @@ void binui_test(){
   push_color(&reg, 1);
   push_color(&reg, 2);
   push_color(&reg, 3);
-  logd("Color: %u\n", get_color(&reg));
-  logd("Color: %u\n", pop_color(&reg));
+  u32 color = get_color(&reg);
+  u32 color2 = pop_color(&reg);
+  ASSERT(color2 == 3);
+  ASSERT(color == 3);
+  logd("Color: %u\n", color);
+  
+  logd("Color: %u\n", color2);
   logd("Color: %u\n", pop_color(&reg));
   logd("Color: %u\n", pop_color(&reg));
   
@@ -790,5 +843,5 @@ void binui_test(){
   binui_iterate(&reg, wd);
   logd("\n");
   test_binui_load_lisp();  
-  
+ */
 }

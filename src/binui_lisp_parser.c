@@ -119,8 +119,13 @@ string_reader read_hex(string_reader rd, io_writer * buffer, u64 * out){
   io_reset(buffer);
   rd = read_until(rd, buffer, is_endexpr);
   char * str = buffer->data;
+  
   for(size_t i = 0; i < buffer->offset; i++){
     var c = str[i];
+    if(i == 0 && c == '0' && str[1] == 'x'){
+      i++;
+      continue;
+    }
     if(!is_hex(str[i])){
       rd.error = 1;
       break;
@@ -149,8 +154,10 @@ string_reader read_f64(string_reader rd, io_writer * buffer, f64 * out){
   char * str = buffer->data;
   char * tail = NULL;
   *out = strtod(str, &tail);
-  if(tail != (str + buffer->offset - 1))
+  if(tail != (str + buffer->offset - 1)){
+    ERROR("CANNOT READ F64");
     rd.error = 1;
+  }
   return rd;
 }
 
@@ -169,6 +176,7 @@ string_reader read_integer(string_reader rd, io_writer * buffer, i64 * out){
       continue;
     }
     if(!is_digit(str[i])){
+      //ERROR("CANNOT read integer");
       rd.error = 1;
       break;
     }
@@ -185,7 +193,7 @@ string_reader read_integer(string_reader rd, io_writer * buffer, i64 * out){
 }
 
 
-string_reader parse_sub(string_reader rd, io_writer * write){
+string_reader parse_sub(binui_context * ctx, string_reader rd, io_writer * write){
   rd = skip_untilc(rd, '(');
   rd.offset += 1;
   rd = skip_while(rd, is_whitespace);
@@ -195,56 +203,103 @@ string_reader parse_sub(string_reader rd, io_writer * write){
   ASSERT(!rd4.error);
   io_write_u8(&name_buffer, 0);
  
-  binui_opcode opcode = binui_opcode_parse(name_buffer.data);
+  binui_opcode opcode = binui_opcode_parse(ctx, name_buffer.data);
   io_write_u8(write, opcode);
   io_reset(&name_buffer);
   string_reader rd_after;
   rd4 = skip_while(rd4, is_whitespace);
-  bool supports_child = true;
-  if(opcode == BINUI_COLOR){
+  binui_opcodedef type = binui_get_opcodedef(ctx, opcode);
+
+  for(size_t i = 0; i < type.typesig_count; i++){
+    let type = type.typesig[i];
+    size_t count = 0;
+    switch(type.signature){
+    case BINUI_VEC2:
+      count = 2;
+      goto handle_float;
+      break;  
+    case BINUI_VEC3:
+      count = 3;
+      goto handle_float;
+      break;
+    case BINUI_VEC4:
+      count = 4;
+      goto handle_float;
+    case BINUI_F32:
+      count = 1;
+    handle_float:;
+      for(size_t i = 0; i < count; i++){
+	rd4 = skip_while(rd4, is_whitespace);
+	f64 x = 0;
+	rd4 = read_f64(rd4, &name_buffer, &x);
+	io_write_f32(write, x);
+      }
+      break;
+    case BINUI_INT8:
+    case BINUI_INT16:
+    case BINUI_INT32:
+    case BINUI_INT64:
+      //case BINUI_UINT8:
+      //case BINUI_UINT16:
+    case BINUI_UINT32:
+    case BINUI_UINT64:
+    case BINUI_INT64_LEB:
+      {
+	i64 x = 0;
+	
+	var rd5 = read_integer(rd4, &name_buffer, &x);
+	if(rd5.error != 0){
+	  rd5 = read_hex(rd4, &name_buffer, (u64 *) &x);
+	}
+	if(rd5.error != 0)
+	  ERROR("Unable to read integer");
+	rd4 = rd5;
+
+	switch(type.signature){
+	case BINUI_INT8:
+	  io_write_i8(write, x);
+	  break;
+	case BINUI_INT16:
+	  io_write_i16(write, x);
+	  break;
+	case BINUI_INT32:
+	  io_write_i32(write, x);
+	  break;
+	case BINUI_INT64:
+	  io_write_i64(write, x);
+	  break;
+	  /*case BINUI_UINT8:
+	  io_write_u8(write, x);
+	  break;
+	case BINUI_UINT16:
+	  io_write_u16(write, x);
+	  break;*/
+	case BINUI_UINT32:
+	  io_write_u32(write, x);
+	  break;
+	case BINUI_UINT64:
+	  io_write_u64(write, x);
+	  break;
+	
+	case BINUI_INT64_LEB:
+	  io_write_i64_leb(write, x);
+	  break;
+	default:
+	  ERROR("UNSUPPORTED TYPE");
+	  break;
+	}
+	break;
+      }
+    case BINUI_STRING:
+      ERROR("STRING NOT YET SUPPORTED");
+      break;
+    default:
+      ERROR("UNSUPPORTED TYPE\n");
+      break;
+    }
   
-    char next = next_byte(rd4);
-    
-    ASSERT(next == '#');
-    rd4.offset += 1;
-    u64 hex_value = 0;
-    var rd5 = read_hex(rd4, &name_buffer, &hex_value);
-    
-    io_write_u32(write, hex_value);
-    rd5 = skip_while(rd5, is_whitespace);
-    rd_after = rd5;
-  }else if(opcode == BINUI_POSITION || opcode == BINUI_SIZE){
-    rd4 = skip_while(rd4, is_whitespace);
-    for(int i = 0; i < 2; i++){
-      i64 x = 0;
-      rd4 = read_integer(rd4, &name_buffer, &x);
-      io_write_i64_leb(write, x);
-    }
-    rd_after = rd4;
-  }else if(opcode == BINUI_TRANSLATE || opcode == BINUI_SCALE){
-    rd4 = skip_while(rd4, is_whitespace);
-    for(int i = 0; i < 3; i++){
-      f64 x = 0;
-      rd4 = read_f64(rd4, &name_buffer, &x);
-      io_write_f32(write, x);
-    }
-    
-    rd_after = rd4;
-  }else if(opcode == BINUI_ROTATE){
-    rd4 = skip_while(rd4, is_whitespace);
-    for(int i = 0; i < 4; i++){
-      f64 x = 0;
-      rd4 = read_f64(rd4, &name_buffer, &x);
-      io_write_f32(write, x);
-    }
-    rd_after = rd4;
   }
-  else if(opcode == BINUI_CANVAS || opcode == BINUI_RECTANGLE || opcode == BINUI_3D){
-    rd_after = rd4;
-  }
-
-  supports_child = opcode != BINUI_RECTANGLE;
-
+  rd_after = rd4;
   io_reset(&name_buffer);
   u32 child_count = 0;
   while(true){
@@ -252,7 +307,7 @@ string_reader parse_sub(string_reader rd, io_writer * write){
     
     char next = next_byte(rd2);
     if(next == '('){
-      rd_after = parse_sub(rd2, &name_buffer);
+      rd_after = parse_sub(ctx, rd2, &name_buffer);
       child_count += 1;
       continue;
     }
@@ -268,7 +323,7 @@ string_reader parse_sub(string_reader rd, io_writer * write){
       break;
     }
   }
-  if(supports_child){
+  if(type.has_children){
     
     io_write_u32_leb(write, child_count);
   }
@@ -279,9 +334,9 @@ string_reader parse_sub(string_reader rd, io_writer * write){
   return rd_after;
 }
 
-void binui_load_lisp(io_reader * rd, io_writer * write){
+void binui_load_lisp(binui_context * ctx, io_reader * rd, io_writer * write){
   string_reader r = {.rd = rd, .offset = io_offset(rd)};
-  r = parse_sub(r, write);
+  r = parse_sub(ctx, r, write);
   if(r.error){
     ERROR("ERROR!\n");
   }
@@ -293,7 +348,6 @@ void test_binui_string_reader(){
   logd("TEST Binui String Reader\n");
   const char * target = "   \n (color #112233fFff -123)";
 
-  io_writer writer = {0};
   io_reader rd = io_from_bytes(target, strlen(target) + 1);
   string_reader rd2 = {.rd = &rd, .offset = 0};
   var rd3 = skip_untilc(rd2, '(');
@@ -342,14 +396,16 @@ void test_binui_string_reader(){
   io_writer_clear(&symbol_writer);
   logd("OK\n");
 }
-void test_write_lisp(void * buffer, size_t size);
+
 void test_binui_lisp_loader(){
   logd("TEST Binui Lisp Loader\n");
   {
-    const char * target = "   \n (color #112233fF)";
+    binui_context * reg = binui_new();
+    const char * target = "   \n (color 11223344)";
     io_writer writer = {0};
     io_reader rd = io_from_bytes(target, strlen(target) + 1);
-    binui_load_lisp(&rd, &writer);
+
+    binui_load_lisp(reg, &rd, &writer);
     char * buffer = writer.data;
     for(size_t i = 0; i < writer.offset; i++){
       logd("%x ", buffer[i]);
@@ -357,18 +413,21 @@ void test_binui_lisp_loader(){
     logd("\nDone loading lisp (%i bytes)\n", writer.offset);
   }
   {
-    const char * target = "   \n (color #44332211 (color #55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 1.0 1.0 1.0 (translate 10 0 10 (rotate 1 0 0 1.0))))))))) (color #1)";
+    const char * target = "   \n (color 0x44332211 (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 1.0 1.0 1.0 (translate 10 0 10 (rotate 1 0 0 1.0))))))))) (color 0x1)";
+    binui_context * reg = binui_new();
+    
     io_writer writer = {0};
     io_reader rd = io_from_bytes(target, strlen(target) + 1);
-    binui_load_lisp(&rd, &writer);
+    binui_load_lisp(reg, &rd, &writer);
     char * buffer = writer.data;
     for(size_t i = 0; i < writer.offset; i++){
       logd("%i ", buffer[i]);
     }
     logd("\nDone loading lisp (%i bytes)\n", writer.offset);
-    test_write_lisp(writer.data, writer.offset);
+    test_write_lisp(reg, writer.data, writer.offset);
     logd("Rewriting lisp\n");
   }
+  
 
 }
 

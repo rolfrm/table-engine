@@ -71,7 +71,6 @@ vec3 translate_current(binui_context  * ctx){
 
 void translate_3d_enter(binui_context * ctx){
   let vec = translate_current(ctx);
-  vec3_print(vec);logd("\n");
   transform_3d_push(ctx, mat4_translate(vec.x, vec.y, vec.z));
 }
 

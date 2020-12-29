@@ -46,6 +46,7 @@ string_reader read_until(string_reader rd, io_writer * writer, bool (* f)(char c
   return rd;
 }
 
+
 static __thread bool (* current_f)(char c);
 bool not_current_f(char c){
   return !current_f(c);
@@ -113,6 +114,32 @@ io_reader io_from_bytes(const void * bytes, size_t size){
   io_reader rd = {.data = (void *) bytes, .offset = 0, .size = size}; 
   return rd;
 }
+
+string_reader read_str(string_reader rd, io_writer * writeto){
+  rd = skip_while(rd, is_whitespace);
+  var rd2 = rd.rd;
+  var ch1 = io_peek_u8(rd2);
+  if(ch1 != '"'){
+    rd.error = 1;
+    return rd;
+  }
+  io_advance(rd2, 1);
+  while(true){
+    var ch = io_read_u8(rd2);
+    if(ch == '"'){
+      if(io_peek_u8(rd2) == '"'){
+	io_advance(rd2, 1);
+      }else{
+	break;
+      }
+    }
+    io_write_u8(writeto, ch);
+  }
+  rd.offset = io_offset(rd2);
+  
+  return rd;
+}
+
 
 string_reader read_hex(string_reader rd, io_writer * buffer, u64 * out){
   u64 r = 0;
@@ -288,10 +315,17 @@ string_reader parse_sub(binui_context * ctx, string_reader rd, io_writer * write
 	  ERROR("UNSUPPORTED TYPE");
 	  break;
 	}
-	break;
       }
+      break;
     case BINUI_STRING:
-      ERROR("STRING NOT YET SUPPORTED");
+      io_reset(&name_buffer);
+      rd4 = read_str(rd4, &name_buffer);
+      if(rd4.error == 0){
+	io_write_u8(&name_buffer, 0);
+	io_write_strn(write, name_buffer.data);
+      }else{
+	ERROR("Unable to read string");
+      }
       break;
     default:
       ERROR("UNSUPPORTED TYPE\n");
@@ -432,7 +466,7 @@ void test_binui_lisp_loader(){
     logd("\nDone loading lisp (%i bytes)\n", writer.offset);
   }
   {
-    const char * target = "   \n (color 0x44332211 (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 0.5 1.0 0.5 (translate 10 0 10 (rotate 0 0 1 0.5 (rectangle)))))))))) (color 0x1)";
+    const char * target = "   \n (color 0x44332211 (import \"3d\") (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 0.5 1.0 0.5 (translate 10 0 10 (rotate 0 0 1 0.5 (rectangle)))))))))) (color 0x1)";
     binui_context * reg = binui_new();
     test_lisp_ctx c = {.ctx = reg};
     c.rectangle_op = binui_opcode_parse(reg, "rectangle");

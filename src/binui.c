@@ -17,8 +17,6 @@
 
 typedef binui_stack_frame stack_frame;
 
-
-
 struct _binui_context {
   void * registers;
   u64 reg_ptr;
@@ -82,7 +80,7 @@ void stack_top(stack * stk, void * data, size_t count){
   memcpy(data, stk->elements + stk->count - count, count);
 }
 
-void * binui_get_register(binui_context * ctx, binui_register * registerID){
+stack * binui_get_register(binui_context * ctx, binui_register * registerID){
   static u32 register_counter = 1;
   if(registerID->id == 0){
     registerID->id = register_counter;
@@ -190,14 +188,6 @@ void size_get(binui_context * ctx, vec2i * get){
     *get = vec2i_zero;
 }
 
-void size_push(binui_context * ctx, vec2i size){
-  binui_stack_register_push(ctx, &size_reg, &size);
-}
-
-void size_pop(binui_context * ctx){
-  binui_stack_register_pop(ctx, &size_reg, NULL);
-}
-
 void size_enter(binui_context * ctx){
 }
 
@@ -207,6 +197,7 @@ void size_exit(binui_context * ctx){
 void binui_get_size(binui_context * ctx, vec2i * get){
   size_get(ctx, get);
 }
+
 static binui_stack_register module_name_register ={.size = sizeof(char *), .stack = {0}};
 
 char * get_module_name(binui_context * ctx){
@@ -286,6 +277,13 @@ node_callback node_callback_get(binui_context * ctx){
   binui_stack_register_top(ctx, &node_callback_reg, &callback);
   return callback;
 }
+
+const u64 escape_hatch64 = 0x2835a751f009041cUL;
+bool escape_hatch_activated(io_reader * reader){
+  u64 peeked = io_peek_u64(reader);
+  return peeked == escape_hatch64;
+}
+
 void enter_typesig(binui_context * reg, io_reader * reader, const binui_auto_type * type){
   union{
     void * ptr;
@@ -296,6 +294,18 @@ void enter_typesig(binui_context * reg, io_reader * reader, const binui_auto_typ
     f64 f2;
     u32 u;
   }data;
+  if(escape_hatch_activated(reader)){
+    io_advance(reader, sizeof(u64));
+    if(io_peek_u64(reader) != escape_hatch64){
+      u64 variable = io_read_u64_leb(reader);
+      logd("Variable: %i\n", variable);
+      ERROR("Variables are not supported");
+    }else{
+      // the escape-hatch was unescaped. This occurs in the case
+      // that was actually the selected values.
+      // almost impossible, but it can occur.
+    }
+  }
   data.ptr = NULL;
   switch(type->signature){
   case BINUI_STRING:
@@ -450,6 +460,12 @@ binui_context * binui_new(){
     static binui_auto_type type;
     type.signature = BINUI_STRING;
     type.reg = &module_name_register;
+    binui_load_opcode(ctx, "__import__", &type, 1, module_enter, NULL, false);
+  }
+  {
+    static binui_auto_type type;
+    type.signature = BINUI_STRING;
+    type.reg = &module_name_register;
     binui_load_opcode(ctx, "import", &type, 1, module_enter, NULL, false);
   }
   
@@ -486,47 +502,6 @@ typedef struct{
   const char * name;
 }binui_opcode_name2;
 
-/*
-void binui_init_lookup(hash_table ** _opcode2name, hash_table ** _name2opcode){
-
-  static hash_table * opcode2name;
-  static hash_table * name2opcode;
-  if(opcode2name != NULL){
-    if(_opcode2name != NULL)
-      *_opcode2name = opcode2name;
-    if(_name2opcode != NULL)
-      *_name2opcode = name2opcode;
-    return;
-  }
-
-  opcode2name = ht_create(sizeof(binui_opcode), sizeof(char *));
-  name2opcode = ht_create_strkey(sizeof(binui_opcode));
-
-  binui_opcode_name2 opcode_names[] =
-    {
-     {.opcode = BINUI_OPCODE_NONE, .name = "none"},
-     {.opcode = BINUI_IMPORT_MODULE, .name = "import"},
-     {.opcode = BINUI_CANVAS, .name = "canvas"},
-     {.opcode = BINUI_RECTANGLE, .name = "rectangle"},
-     {.opcode = BINUI_POSITION, .name = "position"},
-     {.opcode = BINUI_SIZE, .name = "size"},
-     {.opcode = BINUI_COLOR, .name = "color"},
-     {.opcode = BINUI_3D, .name = "3d"},
-     {.opcode = BINUI_3D_TRANSFORM, .name = "transform"},
-     {.opcode = BINUI_3D_POLYGON, .name = "polygon"},
-     {.opcode = BINUI_TRANSLATE, .name = "translate"},
-     {.opcode = BINUI_SCALE, .name = "scale"},
-     {.opcode = BINUI_ROTATE, .name = "rotate"}
-    };
-
-  for(size_t i = 0; i < array_count(opcode_names); i++){
-    ht_set(opcode2name, &opcode_names[i].opcode, &opcode_names[i].name);
-    logd("inserting: %s\n", opcode_names[i].name);
-    ht_set(name2opcode, &opcode_names[i].name, &opcode_names[i].opcode);
-  }
-  binui_init_lookup(_opcode2name, _name2opcode);
-}
-*/
 
 const char * binui_opcode_name(binui_context * ctx, binui_opcode opcode){
   if(opcode >= ctx->opcodedef_count){
@@ -669,17 +644,19 @@ typedef struct{
   int stack_level;
   u64 last_id;
   bool prev_enter;
+  io_writer * wd;
 
 }test_render_context;
 
 void test_after_enter(stack_frame * frame, void * userdata){
-  logd("\n");
   test_render_context * ctx = userdata;
   ctx->last_id = frame->node_id;
   ctx->prev_enter = true;
+  var wd = ctx->wd;
+  io_write_str(wd, "\n");
   for(int i = 0; i < ctx->stack_level; i++)
-    logd(" ");
-  logd("(%s", binui_opcode_name(ctx->ctx, ctx->ctx->current_opcode));
+    io_write_str(wd, " ");
+  io_write_fmt(wd, "(%s", binui_opcode_name(ctx->ctx, ctx->ctx->current_opcode));
   var reg = ctx->ctx;
   ASSERT(frame->opcode < reg->opcodedef_count);
   var handler = reg->opcodedefs[frame->opcode];
@@ -691,55 +668,49 @@ void test_after_enter(stack_frame * frame, void * userdata){
 	{
 	  char * t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  logd(" %s", t);
+	  io_write_fmt(wd, " \"%s\"", t);
 	  break;
 	}
       case BINUI_F32:
 	{
 	  f32 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  logd(" %f", t);
+	  io_write_fmt(wd, " %f", t);
 	  break;
 	}
       case BINUI_F64:
 	{
 	  f64 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  logd(" %f", t);
+	  io_write_fmt(wd, " %f", t);
 	  break;
 	}
       case BINUI_VEC2:
 	{
 	  vec2 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  logd(" %f", t.x);
-	  logd(" %f", t.y);
+	  io_write_fmt(wd, " %f %f", t.x, t.y);
 	  break;
 	}
       case BINUI_VEC3:
 	{
 	  vec3 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  logd(" %f", t.x);
-	  logd(" %f", t.y);
-	  logd(" %f", t.z);
+	  io_write_fmt(wd, " %f %f %f", t.x, t.y, t.z);
 	  break;
 	}
       case BINUI_VEC4:
 	{
 	  vec4 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  logd(" %f", t.x);
-	  logd(" %f", t.y);
-	  logd(" %f", t.z);
-	  logd(" %f", t.w);
+	  io_write_fmt(wd, " %f %f %f %f", t.x, t.y, t.z, t.w);
 	  break;
 	}
       case BINUI_UINT32:
 	{
 	  u32 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  logd(" 0x%x", t);
+	  io_write_fmt(wd, " 0x%x", t);
 	  break;
 	}
 
@@ -754,23 +725,25 @@ void test_after_enter(stack_frame * frame, void * userdata){
 
 void test_before_exit(stack_frame * frame, void * userdata){
   test_render_context * ctx = userdata;
+  var wd = ctx->wd;
+  
   if(frame->node_id == ctx->last_id){
-    logd(")");
+    io_write_str(wd, ")");
     ctx->stack_level -= 1;
     return;
   }
   if(ctx->prev_enter){
     ctx->prev_enter = false;
-  }
-  logd(")");
+  }io_write_str(wd, ")");
+  
   ctx->stack_level -= 1;
 }
 void test_binui_load_lisp();
 io_reader io_from_bytes(const void * bytes, size_t size);
 void test_write_lisp(binui_context * reg, void * buffer, size_t size){
   
-  
-  test_render_context rctx = {.ctx = reg, .stack_level = 0};
+  io_writer wd = {0};
+  test_render_context rctx = {.ctx = reg, .stack_level = 0 , .wd = &wd};
   
   node_callback cb = {.after_enter = test_after_enter,
 		      .before_exit = test_before_exit,
@@ -779,6 +752,8 @@ void test_write_lisp(binui_context * reg, void * buffer, size_t size){
   
   io_reader rd = io_from_bytes(buffer, size);
   binui_iterate(reg, &rd);
+  io_write_u8(&wd, 0);
+  logd("%s", wd.data);
   logd("\n");
   node_callback_pop(reg);
   

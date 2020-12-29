@@ -780,6 +780,7 @@ void test_write_lisp(binui_context * reg, void * buffer, size_t size){
   io_reader rd = io_from_bytes(buffer, size);
   binui_iterate(reg, &rd);
   logd("\n");
+  node_callback_pop(reg);
   
 }
 

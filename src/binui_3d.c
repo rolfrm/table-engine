@@ -71,6 +71,7 @@ vec3 translate_current(binui_context  * ctx){
 
 void translate_3d_enter(binui_context * ctx){
   let vec = translate_current(ctx);
+  vec3_print(vec);logd("\n");
   transform_3d_push(ctx, mat4_translate(vec.x, vec.y, vec.z));
 }
 
@@ -192,7 +193,7 @@ void binui_3d_init(binui_context * ctx){
   {
     static binui_auto_type type;
     type.signature = BINUI_VEC3;
-    type.reg = &scale_register;
+    type.reg = &translate_register;
     binui_load_opcode(ctx, "translate", &type, 1, translate_3d_enter, translate_3d_exit, true);
   }
   
@@ -200,7 +201,7 @@ void binui_3d_init(binui_context * ctx){
     static binui_auto_type type;
     type.signature = BINUI_VEC3;
     type.reg = &scale_register;
-    binui_load_opcode(ctx, "scale", &type, 1, rotate_3d_enter, rotate_3d_exit, true);
+    binui_load_opcode(ctx, "scale", &type, 1, scale_3d_enter, scale_3d_exit, true);
   }
   {
     static binui_auto_type type;

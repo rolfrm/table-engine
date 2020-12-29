@@ -397,6 +397,25 @@ void test_binui_string_reader(){
   logd("OK\n");
 }
 
+typedef struct{
+  binui_context * ctx;
+  binui_opcode rectangle_op;
+}test_lisp_ctx;
+
+void lisp_after_enter(binui_stack_frame * frame, void * userdata){
+  test_lisp_ctx * ctx = userdata;
+  if(frame->opcode == ctx->rectangle_op){
+    logd("Enter Rect!\n");
+    mat4 tform = transform_3d_current(ctx->ctx);
+    mat4_print(tform);
+    logd("\n");
+  }
+}
+
+void lisp_before_exit(binui_stack_frame * frame, void * userdata){
+
+}
+
 void test_binui_lisp_loader(){
   logd("TEST Binui Lisp Loader\n");
   {
@@ -413,12 +432,28 @@ void test_binui_lisp_loader(){
     logd("\nDone loading lisp (%i bytes)\n", writer.offset);
   }
   {
-    const char * target = "   \n (color 0x44332211 (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 1.0 1.0 1.0 (translate 10 0 10 (rotate 1 0 0 1.0))))))))) (color 0x1)";
+    const char * target = "   \n (color 0x44332211 (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 0.5 1.0 0.5 (translate 10 0 10 (rotate 0 0 1 0.5 (rectangle)))))))))) (color 0x1)";
     binui_context * reg = binui_new();
-    
+    test_lisp_ctx c = {.ctx = reg};
+    c.rectangle_op = binui_opcode_parse(reg, "rectangle");
+    node_callback cb = {.after_enter = lisp_after_enter,
+			.before_exit = lisp_before_exit,
+			.userdata = &c};
+
+    node_callback_push(reg, cb);
+  
     io_writer writer = {0};
     io_reader rd = io_from_bytes(target, strlen(target) + 1);
+    
     binui_load_lisp(reg, &rd, &writer);
+
+    node_callback_push(reg, cb);
+
+    io_reader rd2 = io_from_bytes(writer.data, writer.offset);
+
+    binui_iterate(reg, &rd2);
+    node_callback_pop(reg);
+
     char * buffer = writer.data;
     for(size_t i = 0; i < writer.offset; i++){
       logd("%i ", buffer[i]);

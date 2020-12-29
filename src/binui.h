@@ -134,6 +134,6 @@ typedef struct{
 
 binui_polygon binui_polygon_get(binui_context * ctx);
 
-mat4 transform_3d_current_set(binui_context * ctx);
 vec4 rotate_3d_current(binui_context  * ctx);
 void test_write_lisp(binui_context * reg, void * buffer, size_t size);
+mat4 transform_3d_current(binui_context * ctx);

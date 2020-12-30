@@ -35,22 +35,11 @@ struct _binui_context {
   
 };
 
-
-extern io_writer * binui_stdout;
-
 #ifdef NO_STDLIB
 void  memcpy(void *, const void *, unsigned long);
 void * realloc(void *, unsigned long);
 void memset(void *, int chr, unsigned long );
 #endif
-
-io_writer * binui_stdout;
-
-const u8 BINUI_OPCODE_VLEN = 255;
-
-// registers
-const int BINUI_MAX_STACK_SIZE = 1024;
-
 
 typedef struct{
   void * elements;
@@ -92,11 +81,9 @@ stack * binui_get_register(binui_context * ctx, binui_register * registerID){
     ctx->registers = realloc(ctx->registers, new_size);
     // set all new registers to 0.
     memset(ctx->registers + ctx->reg_cap, 0, new_size - ctx->reg_cap);
-    
     ctx->reg_cap = new_size;
   }
   
-  //logd("new size: %i %i\n", ctx->reg_cap, register_counter);
   // this assert is for catching possibily errors early. New registers should not be created very often.
   // in the future remove this.
   ASSERT(ctx->reg_cap < 10000); 
@@ -392,7 +379,6 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
     reg->current_opcode = frame->opcode = io_read_u64_leb(reader);
     
     if(frame->opcode == BINUI_OPCODE_NONE){
-      logd("done \n");
       break;
     }
     

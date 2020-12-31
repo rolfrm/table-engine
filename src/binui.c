@@ -280,6 +280,7 @@ void enter_typesig(binui_context * reg, io_reader * reader, const binui_auto_typ
     f32 f;
     f64 f2;
     u32 u;
+    f32_array f32a;
   }data;
   if(escape_hatch_activated(reader)){
     io_advance(reader, sizeof(u64));
@@ -326,6 +327,14 @@ void enter_typesig(binui_context * reg, io_reader * reader, const binui_auto_typ
   case BINUI_F64:
     {
       data.f = io_read_f64(reader);
+      break;
+    }
+  case BINUI_F32A:
+    {
+      data.f32a.count = io_read_u64_leb(reader);
+      logd("read u64 %i\n", data.f32a.count);
+      data.f32a.array = alloc(data.f32a.count * sizeof(f32));
+      io_read(reader, data.f32a.array, data.f32a.count * sizeof(f32));
       break;
     }
   case BINUI_TYPE_NONE:
@@ -650,6 +659,15 @@ void test_after_enter(stack_frame * frame, void * userdata){
     let typesig = handler.typesig[i];
     switch(typesig.signature)
       {
+      case BINUI_F32A:
+	{
+	  f32_array array;
+	  ASSERT(binui_stack_register_top(reg, typesig.reg, &array));
+	  for(size_t i = 0; i < array.count; i++){
+	    io_write_fmt(wd, " %g", array.array[i]);
+	  }
+	}
+	break;
       case BINUI_STRING:
 	{
 	  char * t;
@@ -661,35 +679,35 @@ void test_after_enter(stack_frame * frame, void * userdata){
 	{
 	  f32 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  io_write_fmt(wd, " %f", t);
+	  io_write_fmt(wd, " %g", t);
 	  break;
 	}
       case BINUI_F64:
 	{
 	  f64 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  io_write_fmt(wd, " %f", t);
+	  io_write_fmt(wd, " %g", t);
 	  break;
 	}
       case BINUI_VEC2:
 	{
 	  vec2 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  io_write_fmt(wd, " %f %f", t.x, t.y);
+	  io_write_fmt(wd, " %g %g", t.x, t.y);
 	  break;
 	}
       case BINUI_VEC3:
 	{
 	  vec3 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  io_write_fmt(wd, " %f %f %f", t.x, t.y, t.z);
+	  io_write_fmt(wd, " %g %g %g", t.x, t.y, t.z);
 	  break;
 	}
       case BINUI_VEC4:
 	{
 	  vec4 t;
 	  ASSERT(binui_stack_register_top(reg, typesig.reg, &t));
-	  io_write_fmt(wd, " %f %f %f %f", t.x, t.y, t.z, t.w);
+	  io_write_fmt(wd, " %g %g %g %g", t.x, t.y, t.z, t.w);
 	  break;
 	}
       case BINUI_UINT32:

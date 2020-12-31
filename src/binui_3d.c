@@ -113,9 +113,11 @@ void rotate_3d_exit(binui_context * ctx){
   transform_3d_pop(ctx);
 }
 
-binui_stack_register polygon_3d_register ={.size =sizeof(binui_polygon), .stack = {0}};
 
-void polygon_3d_enter(binui_context * ctx){
+
+binui_stack_register polygon_register ={.size = sizeof(f32_array), .stack = {0}};
+
+void polygon_enter(binui_context * ctx){
 
   /*i32 vert_cnt = io_read_i32_leb(reader);
   i32 dim = io_read_i32_leb(reader);
@@ -135,7 +137,7 @@ void polygon_3d_enter(binui_context * ctx){
   */
 }
 
-void polygon_3d_exit(binui_context * ctx){
+void polygon_exit(binui_context * ctx){
   /*binui_polygon pts;
   binui_stack_register_pop(ctx, &polygon_3d_register, &pts);
   dealloc(pts.data);*/ 
@@ -159,7 +161,7 @@ blit3d_context * blit3d_getctx(binui_context * ctx){
 
 binui_polygon binui_polygon_get(binui_context * ctx){
   binui_polygon pts = {0};
-  binui_stack_register_top(ctx, &polygon_3d_register, &pts);
+  binui_stack_register_top(ctx, &polygon_register, &pts);
   return pts;
   }
 
@@ -206,8 +208,13 @@ void binui_3d_init(binui_context * ctx){
     static binui_auto_type type;
     type.signature = BINUI_VEC4;
     type.reg = &rotate_register;
-    binui_load_opcode(ctx, "rotate", &type, 1, rotate_3d_enter, rotate_3d_exit, true);
+    binui_load_opcode(ctx, "rotate", &type, 1, rotate_3d_enter, rotate_3d_exit, true); 
+  }
 
-    
+  {
+    static binui_auto_type type;
+    type.signature = BINUI_F32A;
+    type.reg = &polygon_register;
+    binui_load_opcode(ctx, "polygon", &type, 1, polygon_enter, polygon_exit, true);
   }
 }

@@ -37,6 +37,7 @@ typedef enum{
 	     BINUI_VEC4,
 	     BINUI_MAT3,
 	     BINUI_MAT4,
+	     BINUI_F32A,
 	     BINUI_TYPE_NONE
 	     
 }binui_type_signature;
@@ -137,3 +138,9 @@ binui_polygon binui_polygon_get(binui_context * ctx);
 vec4 rotate_3d_current(binui_context  * ctx);
 void test_write_lisp(binui_context * reg, void * buffer, size_t size);
 mat4 transform_3d_current(binui_context * ctx);
+
+typedef struct{
+  u32 count;
+  f32 * array;
+
+}f32_array;

@@ -180,9 +180,11 @@ string_reader read_f64(string_reader rd, io_writer * buffer, f64 * out){
   io_write_u8(buffer, 0);
   char * str = buffer->data;
   char * tail = NULL;
+  
   *out = strtod(str, &tail);
-  if(tail != (str + buffer->offset - 1)){
-    ERROR("CANNOT READ F64");
+  logd("reading %s\n", str);
+  if(*str == 0 || tail != (str + buffer->offset - 1)){
+    logd("Done!\n");
     rd.error = 1;
   }
   return rd;
@@ -252,6 +254,7 @@ string_reader parse_sub(binui_context * ctx, string_reader rd, io_writer * write
     case BINUI_VEC4:
       count = 4;
       goto handle_float;
+      
     case BINUI_F32:
       count = 1;
     handle_float:;
@@ -260,6 +263,26 @@ string_reader parse_sub(binui_context * ctx, string_reader rd, io_writer * write
 	f64 x = 0;
 	rd4 = read_f64(rd4, &name_buffer, &x);
 	io_write_f32(write, x);
+      }
+      break;
+    case BINUI_F32A:
+      {
+	io_writer numbers_buffer = {0};
+	u64 count = 0;
+	while(true){
+	  rd4 = skip_while(rd4, is_whitespace);
+	  f64 x = 0;
+	  var rd4_2 = read_f64(rd4, &name_buffer, &x);
+	  if(rd4_2.error != 0){
+	    break;
+	  }
+	  rd4 = rd4_2;
+	  count += 1;
+	  io_write_f32(&numbers_buffer, x);
+	}
+	io_write_u64_leb(write, count);
+	io_write(write, numbers_buffer.data, numbers_buffer.offset);
+	io_writer_clear(&numbers_buffer);
       }
       break;
     case BINUI_INT8:
@@ -466,7 +489,7 @@ void test_binui_lisp_loader(){
     logd("\nDone loading lisp (%i bytes)\n", writer.offset);
   }
   {
-    const char * target = "   \n (color 0x44332211 (import \"3d\") (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 0.5 1.0 0.5 (translate 10 0 10 (rotate 0 0 1 0.5 (rectangle)))))))))) (color 0x1)";
+    const char * target = "   \n (color 0x44332211 (import \"3d\") (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 0.5 1.0 0.5 (translate 10 0 10 (rotate 0 0 1 0.5 (rectangle) (polygon 1.0 2.0 3.5)))))))))) (color 0x1)";
     binui_context * reg = binui_new();
     test_lisp_ctx c = {.ctx = reg};
     c.rectangle_op = binui_opcode_parse(reg, "rectangle");

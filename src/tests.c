@@ -14,7 +14,7 @@ extern u64_f32_f32_vector_index * polygon_table;
 extern u64_table * canvas_polygons;
 
 void test_string_intern(){
- u64 a = intern_string("Hello world");
+  u64 a = intern_string("Hello world");
   u64 b = intern_string("HHHHHHHHHHHEEEEEEEEEEELLLLLLLLLLLLLLOOOOOOOO");
   u64 c = intern_string("Hello world");
   u64 d = intern_string("Hello world!");
@@ -32,6 +32,7 @@ void test_string_intern(){
 }
 
 void render_test_window(u64 id){
+  UNUSED(id);
   const char * l = "Hello world from win 1";
   render_text(l, strlen(l), window_size, vec2_new(0, 0));
   
@@ -42,7 +43,9 @@ void render_test_window(u64 id){
   render_text(l, strlen(l), window_size, vec2_new(0, 60));
 }
 
+
 void render_test_window2(u64 id){
+  UNUSED(id);
   blit_begin(BLIT_MODE_UNIT);
   blit_rectangle(-1,-1,2,2,1,0,0,0.1);
   //blit_end();
@@ -132,24 +135,21 @@ static void print_table(char * command){
   }
   icy_table * t = table_get_named(command);
   printf("Priting table %s: %p\n", command, t);
-  //char * s = fmtstr("print table '%s' %p", command, t);
-  //console_log(s);
-  //dealloc(s);
   
   if(t != NULL){
     char buf[200];
-    int offset = 0;
-    for(int i = 0; i < t->column_count; i++){
+    size_t offset = 0;
+    for(size_t i = 0; i < t->column_count; i++){
       offset += sprintf(buf + offset, "%s ", t->column_names[i]);
     }
     console_log(buf);
 
     icy_mem ** mems = icy_table_get_memory_areas(t);
     
-    for(int j = 1; j < t->count + 1; j++){
+    for(size_t j = 1; j < t->count + 1; j++){
       char buf[200] = {0};
-      int offset = 0;
-      for(int i = 0; i < t->column_count; i++){
+      size_t offset = 0;
+      for(size_t i = 0; i < t->column_count; i++){
 	void * ptr = mems[i]->ptr;
 	char * type = t->column_types[i];
 	if(strcmp(type, "u64") == 0){
@@ -177,12 +177,14 @@ static void print_test(char * printcmd){
 void iterate_tables(void (*f )(icy_table *table, void * userdata), void * userdata);
 
 static void print_single_table(icy_table * table, void * userdata){
+  UNUSED(userdata);
   icy_mem ** t = icy_table_get_memory_areas(table);
   
   console_log(t[0]->name);
 }
 
 static void print_tables(char * printcmd){
+  UNUSED(printcmd);
   iterate_tables(print_single_table, NULL);
 }
 
@@ -267,10 +269,12 @@ void test_graphics(){
 }
 
 void print_named_control(u64 control, const char * name, void * userdata){
+  UNUSED(control, userdata);
   console_log(name);
 }
 
 void print_named_controls(char * args){
+  UNUSED(args);
   named_controls_iterate(print_named_control, NULL);
 }
 

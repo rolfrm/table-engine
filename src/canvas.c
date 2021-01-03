@@ -39,7 +39,7 @@ model * get_or_create_polygon(u64 polygon){
       f32 * x = points->x + indx.index;
       f32 * y = points->y + indx.index;
       float pts[2 * indx.count];
-      for(int i = 0; i < indx.count; i++){
+      for(size_t i = 0; i < indx.count; i++){
 	pts[i * 2] = x[i];
 	pts[i * 2 + 1] = y[i];
       }
@@ -56,7 +56,7 @@ model * get_or_create_polygon(u64 polygon){
 }
 
 void canvas_render_polygon(canvas_context * ctx, model * mod){
-
+  UNUSED(ctx, mod);
 }
 
 void binui_test_load(io_writer * wd);
@@ -80,7 +80,7 @@ static void blit_rectangle3(binui_stack_frame * frame, void * userdata){
   UNUSED(frame);
   var ctx = (canvas_context *) userdata;
   if(ctx == NULL) return;
-  
+  return;
   var opcode = binui_current_opcode(ctx->binui);
 
   binui_opcode BINUI_3D_POLYGON = binui_opcode_parse(ctx->binui, "polygon");

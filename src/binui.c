@@ -134,11 +134,11 @@ void binui_get_color(binui_context * ctx, u32 *color){
 }
 
 void color_enter(binui_context * ctx){
-
+  UNUSED(ctx);
 }
 
 void color_exit(binui_context * ctx){
-
+  UNUSED(ctx);
 }
 
 static binui_stack_register position_reg ={.size =sizeof(vec2), .stack = {0}};
@@ -163,9 +163,11 @@ void position_pop(binui_context * ctx){
 }
 
 void position_enter(binui_context * ctx){
+  UNUSED(ctx);
 }
 
 void position_exit(binui_context * ctx){
+  UNUSED(ctx);
 }
 
 binui_stack_register size_reg = {.size = sizeof(vec2i), .stack = {0}};
@@ -176,10 +178,11 @@ void size_get(binui_context * ctx, vec2i * get){
 }
 
 void size_enter(binui_context * ctx){
+  UNUSED(ctx);
 }
 
 void size_exit(binui_context * ctx){
-
+  UNUSED(ctx);
 }
 void binui_get_size(binui_context * ctx, vec2i * get){
   size_get(ctx, get);
@@ -200,10 +203,11 @@ void module_enter(binui_context * ctx){
 }
 
 void rectangle_enter(binui_context * ctx){
-  
+  UNUSED(ctx); 
 }
 
 void canvas_enter(binui_context * ctx){
+  UNUSED(ctx);
 }
 
 void _binui_set_opcodedef(binui_opcode opcode, binui_context * ctx, binui_opcodedef handler){
@@ -211,7 +215,7 @@ void _binui_set_opcodedef(binui_opcode opcode, binui_context * ctx, binui_opcode
   if(ctx->opcodedef_count <= opcode){
     ctx->opcodedefs = realloc(ctx->opcodedefs, sizeof(handler) * (opcode + 1));
     
-    for(int i = ctx->opcodedef_count; i <= opcode; i++){
+    for(size_t i = ctx->opcodedef_count; i <= opcode; i++){
       ctx->opcodedefs[i] = (binui_opcodedef){0};
     }
     ctx->opcodedef_count = opcode + 1;
@@ -396,12 +400,10 @@ void binui_iterate_internal(binui_context * reg, io_reader * reader){
       for(u32 i = 0; i < handler.typesig_count; i++){
 	enter_typesig(reg, reader, handler.typesig + i);
       }
-      if(handler.enter != NULL){
+      if(handler.enter != NULL)
 	handler.enter(reg);
-	if(handler.has_children){
-	  frame->child_count = io_read_u64_leb(reader);
-	}
-      }
+      if(handler.has_children)
+	frame->child_count = io_read_u64_leb(reader);
     }else{
       ERROR("No handler for opcode!");
     }

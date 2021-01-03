@@ -470,7 +470,7 @@ void lisp_after_enter(binui_stack_frame * frame, void * userdata){
 }
 
 void lisp_before_exit(binui_stack_frame * frame, void * userdata){
-
+  UNUSED(frame, userdata);
 }
 
 void test_binui_lisp_loader(){
@@ -489,7 +489,7 @@ void test_binui_lisp_loader(){
     logd("\nDone loading lisp (%i bytes)\n", writer.offset);
   }
   {
-    const char * target = "   \n (color 0x44332211 (import \"3d\") (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 0.5 1.0 0.5 (translate 10 0 10 (rotate 0 0 1 0.5 (rectangle) (polygon 1.0 2.0 3.5)))))))))) (color 0x1)";
+    const char * target = "   \n (color 0x44332211 (import \"3d\") (color 0x55443322 (position 1 2 (size 10 10 (rectangle)) (size 20 20 (position 10 5 (rectangle) (size 1 1 (scale 0.5 1.0 0.5 (translate 10 0 10 (rotate 0 0 1 0.5 (rectangle) (polygon 1.0 0.0 0.0  0.0 1.0 0.0 0.0 0.0 0.0)))))))))) (color 0x1)";
     binui_context * reg = binui_new();
     test_lisp_ctx c = {.ctx = reg};
     c.rectangle_op = binui_opcode_parse(reg, "rectangle");

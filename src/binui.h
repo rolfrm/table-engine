@@ -126,21 +126,17 @@ vec4 io_read_vec4(io_reader * rd);
 void io_write_mat4(io_writer * wd, mat4 m);
 
 
-typedef struct{
-  u32 count;
-  u32 dim;
-  f32 * data;
-  
-}binui_polygon;
-
-binui_polygon binui_polygon_get(binui_context * ctx);
-
 vec4 rotate_3d_current(binui_context  * ctx);
 void test_write_lisp(binui_context * reg, void * buffer, size_t size);
 mat4 transform_3d_current(binui_context * ctx);
+mat4 camera_get(binui_context * ctx);
 
 typedef struct{
   u32 count;
   f32 * array;
 
 }f32_array;
+
+f32_array blit3d_polygon_get(binui_context * ctx);
+
+void binui_load_lisp_string(binui_context * ctx, io_writer * wd, const char * target);

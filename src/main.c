@@ -69,7 +69,6 @@ void binui_test();
 
 int main(){
   binui_test();
-  return 0;
   
   logd_enable = true;
   loaded_modules = u64_table_create(NULL);

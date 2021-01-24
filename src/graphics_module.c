@@ -21,8 +21,8 @@ void register_table(void * _table){
   icy_mem ** t = icy_table_get_memory_areas(table);
   icy_mem * area;
   int len = 0;
-  for(int i = 0; i < table->column_count;i++){
-    printf("Table %i\n", i);
+  for(size_t i = 0; i < table->column_count;i++){
+    printf("Table %lu\n", i);
     if(t[i]->name == NULL) continue;
     name = t[i]->name;
     len = strlen(table->column_names[i]);
@@ -43,7 +43,7 @@ size_t u64_table_iter(u64_table * table, u64 * keys, size_t keycnt, u64 * option
 void iterate_tables(void (*f )(icy_table *table, void * userdata), void * userdata){
 
   u64_table * table = registered_tables;
-  for(int i = 0; i < table->count; i++){
+  for(size_t i = 0; i < table->count; i++){
     f((void *) table->value[i + 1], userdata);
   }
 }
@@ -73,7 +73,7 @@ const char * control_get_name(u64 id){
 
 void named_controls_iterate(void (* f)(u64 control, const char * name, void * userdata), void * userdata){
   u64_table * table = control_names;
-  for(int i = 0; i < table->count; i++){
+  for(size_t i = 0; i < table->count; i++){
     f((u64) table->key[i + 1], (const char *) table->value[i + 1], userdata);
   }  
 }
@@ -352,10 +352,10 @@ void render_window(u64 winid){
 
   window_size = vec2_new(w, h);
   current_control_offset = vec2_zero;
-  blit_begin(BLIT_MODE_UNIT);
+  //blit_begin(BLIT_MODE_UNIT);
   blit_clear();
 
-  blit_begin(BLIT_MODE_PIXEL_SCREEN);
+  //blit_begin(BLIT_MODE_PIXEL_SCREEN);
 
   control_render(winid);
   gl_window_swap(win);

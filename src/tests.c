@@ -202,7 +202,7 @@ void continue_init_load();
 
 void test_graphics(){
 
-  { // window 1;
+  if(false){ // window 1;
     u64 win = control_new_named("test_window");
     
     set_class(win, window_class);

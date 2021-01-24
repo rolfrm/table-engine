@@ -4,11 +4,25 @@
 #include "binui.h"
 
 static binui_stack_register transform_3d_register ={.size =sizeof(mat4), .stack = {0}};
+static binui_stack_register camera_register ={.size =sizeof(mat4), .stack = {0}};
+static binui_stack_register perspective_register ={.size =sizeof(vec4), .stack = {0}};
 static binui_stack_register rotate_register ={.size =sizeof(vec4), .stack = {0}};
 static binui_stack_register scale_register ={.size =sizeof(vec3), .stack = {0}};
 static binui_stack_register translate_register ={.size =sizeof(vec3), .stack = {0}};
 static binui_stack_register polygon_register ={.size = sizeof(f32_array), .stack = {0}};
 static binui_stack_register blit3d_entered ={.size =sizeof(bool), .stack = {0}};
+
+f32_array blit3d_polygon_get(binui_context * ctx){
+  f32_array array = {0};
+  binui_stack_register_top(ctx, &polygon_register, &array);
+  return array;
+}
+
+mat4 camera_get(binui_context * ctx){
+  mat4 p;
+  binui_stack_register_top(ctx, &camera_register, &p);
+  return p;
+}
 
 mat4 io_read_mat4(io_reader * rd){
   mat4 m;
@@ -123,6 +137,22 @@ void blit_3d_exit(binui_context * ctx){
   binui_stack_register_pop(ctx, &blit3d_entered, NULL);
 }
 
+
+void perspective_enter(binui_context * ctx){
+  
+  if(binui_stack_register_top(ctx, &camera_register, NULL)){
+    ERROR("Blit 3D already active");
+  }
+  vec4 perspective;
+  ASSERT(binui_stack_register_top(ctx, &perspective_register, &perspective));
+  mat4 m = mat4_perspective(perspective.x, perspective.y, perspective.z, perspective.w);
+  binui_stack_register_push(ctx, &camera_register, &m);
+}
+
+void perspective_exit(binui_context * ctx){
+  binui_stack_register_pop(ctx, &camera_register, NULL);
+}
+
 void binui_3d_init(binui_context * ctx){
 
   binui_load_opcode(ctx, "3d", NULL, 0, blit_3d_enter, blit_3d_exit, true);
@@ -132,6 +162,12 @@ void binui_3d_init(binui_context * ctx){
     type.signature = BINUI_VEC3;
     type.reg = &translate_register;
     binui_load_opcode(ctx, "translate", &type, 1, translate_3d_enter, translate_3d_exit, true);
+  }
+  {
+    static binui_auto_type type;
+    type.signature = BINUI_VEC4;
+    type.reg = &perspective_register;
+    binui_load_opcode(ctx, "perspective", &type, 1, perspective_enter, perspective_exit, true);
   }
   
   {

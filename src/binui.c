@@ -198,8 +198,9 @@ char * get_module_name(binui_context * ctx){
 }
 
 void module_enter(binui_context * ctx){
-  char * mod = get_module_name(ctx);
-  logd("MODULE: %s\n", mod);
+  UNUSED(ctx);
+  //char * mod = get_module_name(ctx);
+  //logd("MODULE: %s\n", mod);
 }
 
 void rectangle_enter(binui_context * ctx){
@@ -336,7 +337,6 @@ void enter_typesig(binui_context * reg, io_reader * reader, const binui_auto_typ
   case BINUI_F32A:
     {
       data.f32a.count = io_read_u64_leb(reader);
-      logd("read u64 %i\n", data.f32a.count);
       data.f32a.array = alloc(data.f32a.count * sizeof(f32));
       io_read(reader, data.f32a.array, data.f32a.count * sizeof(f32));
       break;
@@ -518,8 +518,7 @@ binui_opcode binui_opcode_parse(binui_context * ctx, const char * name){
 }
 
 void handle_opcode(binui_context * registers, void * userdata){
-  UNUSED(registers);
-  UNUSED(userdata);
+  UNUSED(registers, userdata);
 }
 
 void binui_iterate(binui_context * reg, io_reader * reader){

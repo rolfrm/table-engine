@@ -11,7 +11,7 @@
 #include "u64_table.h"
 #include "model.h"
 #include "binui.h"
-void binui_test_load(io_writer * wd);
+void binui_test_load(binui_context * ctx, io_writer * wd);
 f32_f32_vector * points;
 u64_f32_f32_vector_index * polygon_table;
 u64_table * canvas_polygons;
@@ -22,6 +22,8 @@ typedef struct {
   blit3d_context * blit3d;
   io_writer wd;
   binui_context * binui;
+  char * resource_file;
+  u64 timestamp;
 }canvas_context;
 
 u64 canvas_class;
@@ -59,14 +61,12 @@ void canvas_render_polygon(canvas_context * ctx, model * mod){
   UNUSED(ctx, mod);
 }
 
-void binui_test_load(io_writer * wd);
 canvas_context * canvas_get_context(u64 canvas){
   u64 ptr;
   if(!u64_table_try_get(canvas_contexts, &canvas, &ptr)){
+    
     canvas_context * ctx = alloc0(sizeof(canvas_context));
     ctx->binui = binui_new();
- 
-    binui_test_load(&ctx->wd);
     
     ctx->blit3d  = blit3d_context_new();
  
@@ -76,16 +76,15 @@ canvas_context * canvas_get_context(u64 canvas){
   return (canvas_context *) ptr;
 }
 
+
 static void blit_rectangle3(binui_stack_frame * frame, void * userdata){
   UNUSED(frame);
   var ctx = (canvas_context *) userdata;
   if(ctx == NULL) return;
-  return;
   var opcode = binui_current_opcode(ctx->binui);
 
   binui_opcode BINUI_3D_POLYGON = binui_opcode_parse(ctx->binui, "polygon");
-  binui_opcode BINUI_RECTANGLE = binui_opcode_parse(ctx->binui, "rectangle");
-  if(opcode != BINUI_3D_POLYGON && opcode != BINUI_RECTANGLE)
+  if(opcode != BINUI_3D_POLYGON)
     return;
   u32 color;
   binui_get_color(ctx->binui, &color);
@@ -96,29 +95,19 @@ static void blit_rectangle3(binui_stack_frame * frame, void * userdata){
   a = ((color >> 24) & 0xFF) * (1.0 / 255.0);
   
   
-  if(opcode == BINUI_3D_POLYGON){
-    binui_polygon poly = binui_polygon_get(ctx->binui);
-    blit3d_polygon * p = blit3d_polygon_new();
-    blit3d_polygon_load_data(p, poly.data, poly.count * poly.dim * sizeof(f32));
-    //blit3d_color(ctx->binui, vec4_new(r,g,b,a));
-    
-
-    logd("Render polygon %i!\n", poly.count);
-    
-    blit3d_polygon_destroy(&p);
-
-    return;
-  }
+  f32_array array = blit3d_polygon_get(ctx->binui);
+  if(array.count == 0) return;
+  mat4 m = transform_3d_current(ctx->binui);
+  mat4 c = camera_get(ctx->binui);
+  // binui_polygon poly = binui_polygon_get(ctx->blit3d);
+  blit3d_polygon * p = blit3d_polygon_new();
+  blit3d_polygon_load_data(p, array.array, array.count * 3 * sizeof(f32));
+  blit3d_polygon_configure(p, 3);
+  blit3d_color(ctx->blit3d, vec4_new(r,g,b,a));
+  blit3d_view(ctx->blit3d, mat4_mul(c, m));
+  blit3d_polygon_blit(ctx->blit3d, p);
   
-  if(opcode != BINUI_RECTANGLE) return;
-  
-  vec2i p;
-  binui_get_position(ctx->binui, &p);
-
-  vec2i s;
-  binui_get_size(ctx->binui, &s);
-  blit_rectangle(p.x, p.y, s.x, s.y, r,g,b,a);
-  
+  blit3d_polygon_destroy(&p);
 }
 
 void render_canvas(u64 canvas){
@@ -130,18 +119,34 @@ void render_canvas(u64 canvas){
     h = window_size.y;
   }
   
-  vec2 pos = current_control_offset;
-  blit_rectangle(pos.x,pos.y,w,h,1,1,1,1);
-  u64 index = 0, cnt = 0, idx;
+  //vec2 pos = current_control_offset;
+  //blit_rectangle(pos.x,pos.y,w,h,1,1,1,1);
+  const char * path = "./scene1.lisp";
+  if(file_exists(path) == false){
+    logd("File %s does not exist\n", path);
+    return;
+  }
+  let mod = file_modification_date(path);
+  if(mod != ctx->timestamp){
+    ctx->timestamp = mod;
+    logd("Loading %s\n", path);
+    //"(color 0xFF332244 (scale 1.0 1.0 1.0 (translate 0 0 0.5 (rotate 0 0 1 0.5 (polygon 0 0 0   0 1 0   1 0 0   1 1 0)))))";
+    char * target = read_file_to_string(path);
+    io_writer_clear(&ctx->wd);
+    binui_load_lisp_string(ctx->binui, &ctx->wd, target);
+    dealloc(target);
+  }
 
-  blit3d_context_load(ctx->blit3d);
   
+  blit3d_context_load(ctx->blit3d);
+  /*
+  u64 index = 0, cnt = 0, idx;
   while((cnt = u64_table_iter(canvas_polygons, &canvas, 1, NULL, &idx, 1, &index))){
     model * mod = get_or_create_polygon(canvas_polygons->value[idx]);     
     canvas_render_polygon(ctx, mod);
     mat4_rotate_3d_transform(0,0,0,0,0,0);
   }
-
+  */
   node_callback render = {
     .after_enter = blit_rectangle3,
     .before_exit = NULL,
@@ -151,10 +156,7 @@ void render_canvas(u64 canvas){
   node_callback_push(ctx->binui, render);
   
   io_reset(&ctx->wd);
-  blit_push();
-  blit_begin(BLIT_MODE_PIXEL);
-  binui_iterate(ctx->binui, &ctx->wd);
-  blit_pop();		
+  binui_iterate(ctx->binui, &ctx->wd);	
   node_callback_pop(ctx->binui);
 }
 
